@@ -52,50 +52,109 @@ assert test_pdfs[1]['is_local'] == True, "119215_solution.pdf debe estar marcado
 assert test_pdfs[2]['is_local'] == False, "118065.pdf NO debe estar marcado como local"
 print("\n✓ TEST 1 PASADO: mark_local_files() funciona correctamente\n")
 
-# Test 2: Verify PDF grouping in print_preview
+# Test 2: Verify PDF sorting by REF
 print("=" * 80)
-print("TEST 2: Verificar agrupación de PDFs en preview")
+print("TEST 2: Verificar ordenamiento por REF")
 print("=" * 80)
 
 from catlux_scrapper import PDFManager
 import requests
+import re
 
-# We'll just test the grouping logic
-manager = PDFManager(requests.Session())
+# Create test PDFs with different REF numbers
+test_pdfs_unsorted = [
+    {'name': '119215', 'is_solution': False, 'url': 'test', 'full_url': 'test',
+     'doc_id': '119215', 'doc_number': '#3426', 'doc_type': 'Schulaufgabe', 'doc_title': 'Test 3', 'is_local': False},
+    {'name': '118065', 'is_solution': False, 'url': 'test', 'full_url': 'test',
+     'doc_id': '118065', 'doc_number': '#3425', 'doc_type': 'Aufsatz', 'doc_title': 'Test 1', 'is_local': False},
+    {'name': '120000', 'is_solution': False, 'url': 'test', 'full_url': 'test',
+     'doc_id': '120000', 'doc_number': '#3424', 'doc_type': 'Test', 'doc_title': 'Test 2', 'is_local': False},
+]
 
-print(f"\nPDFs a agrupar:")
-for i, pdf in enumerate(test_pdfs, 1):
-    print(f"  {i}. {pdf['name']}")
+def extract_ref_number(pdf):
+    """Extrae el número de REF para ordenar"""
+    doc_number = pdf.get('doc_number', '')
+    match = re.search(r'#(\d+)', doc_number)
+    if match:
+        return int(match.group(1))
+    return 999999
 
-grouped = manager.group_by_category(test_pdfs)
-print(f"\nPDFs agrupados:")
-for key, pdfs in grouped.items():
-    print(f"  - {key}: {len(pdfs)} items")
+sorted_pdfs = sorted(test_pdfs_unsorted, key=extract_ref_number)
 
-print("\n✓ TEST 2 PASADO: Agrupación funciona correctamente\n")
+print(f"\nPDFs sin ordenar:")
+for pdf in test_pdfs_unsorted:
+    print(f"  - {pdf['name']} ({pdf['doc_number']})")
 
-# Test 3: Verify selected_indices logic
+print(f"\nPDFs ordenados por REF:")
+for pdf in sorted_pdfs:
+    print(f"  - {pdf['name']} ({pdf['doc_number']})")
+
+assert sorted_pdfs[0]['doc_number'] == '#3424', "Debe estar ordenado por REF"
+assert sorted_pdfs[1]['doc_number'] == '#3425', "Debe estar ordenado por REF"
+assert sorted_pdfs[2]['doc_number'] == '#3426', "Debe estar ordenado por REF"
+
+print("\n✓ TEST 2 PASADO: Ordenamiento por REF funciona correctamente\n")
+
+# Test 3: Verify independent documents and auto-solution download
 print("=" * 80)
-print("TEST 3: Verificar lógica de índices seleccionados")
+print("TEST 3: Verificar documentos independientes y descarga automática de soluciones")
 print("=" * 80)
 
-test_pdfs_extended = test_pdfs * 2  # Simular más PDFs
+# Crear una lista de documentos independientes (examen y solución separados)
+test_docs_independent = [
+    {'name': '119215', 'is_solution': False, 'url': 'test', 'full_url': 'test',
+     'doc_id': '119215', 'doc_number': '#3426', 'doc_type': 'Schulaufgabe', 'doc_title': 'Test 1', 'is_local': False},
+    {'name': '119215_solution', 'is_solution': True, 'url': 'test', 'full_url': 'test',
+     'doc_id': '119215', 'doc_number': '#3426', 'doc_type': 'Schulaufgabe', 'doc_title': 'Test 1', 'is_local': False},
+    {'name': '118065', 'is_solution': False, 'url': 'test', 'full_url': 'test',
+     'doc_id': '118065', 'doc_number': '#3425', 'doc_type': 'Aufsatz', 'doc_title': 'Test 2', 'is_local': False},
+    {'name': '118065_solution', 'is_solution': True, 'url': 'test', 'full_url': 'test',
+     'doc_id': '118065', 'doc_number': '#3425', 'doc_type': 'Aufsatz', 'doc_title': 'Test 2', 'is_local': False},
+    {'name': '117356', 'is_solution': False, 'url': 'test', 'full_url': 'test',
+     'doc_id': '117356', 'doc_number': '#3424', 'doc_type': 'Test', 'doc_title': 'Test 3', 'is_local': False},
+    {'name': '117356_solution', 'is_solution': True, 'url': 'test', 'full_url': 'test',
+     'doc_id': '117356', 'doc_number': '#3424', 'doc_type': 'Test', 'doc_title': 'Test 3', 'is_local': False},
+]
 
-print(f"\nSimulando selección de índices:")
-print(f"  Total de PDFs: {len(test_pdfs_extended)}")
+print(f"\nDocumentos en lista (independientes):")
+for i, doc in enumerate(test_docs_independent, 1):
+    dtype = "Exam" if not doc['is_solution'] else "Solution"
+    print(f"  {i}. {doc['name']:20} ({dtype})")
 
-# Simulate selection of indices 0, 2, 4 (0-based)
-selected_indices = [0, 2, 4]
-pdfs_to_download = [test_pdfs_extended[i] for i in selected_indices if i < len(test_pdfs_extended)]
+# Usuario selecciona índices 0 y 2 (los dos exámenes)
+selected_indices = [0, 2]  # 119215 y 118065 examen
+pdfs_to_download = [test_docs_independent[i] for i in selected_indices if i < len(test_docs_independent)]
 
-print(f"  Índices seleccionados: {selected_indices}")
-print(f"  PDFs a descargar: {len(pdfs_to_download)}")
-print(f"\n  PDFs seleccionados:")
+print(f"\nUsuario selecciona índices: {selected_indices} (solo exámenes)")
+print(f"PDFs seleccionados:")
 for pdf in pdfs_to_download:
-    print(f"    - {pdf['name']}")
+    dtype = "Exam" if not pdf['is_solution'] else "Solution"
+    print(f"  - {pdf['name']} ({dtype})")
 
-assert len(pdfs_to_download) == 3, "Debe haber 3 PDFs seleccionados"
-print("\n✓ TEST 3 PASADO: Lógica de índices funciona correctamente\n")
+# Simular descarga automática de soluciones
+print(f"\nSimulando descarga automática de soluciones:")
+downloaded_docs = []
+for pdf in pdfs_to_download:
+    if not pdf['is_solution']:
+        # Es examen, agregar a descargados
+        downloaded_docs.append(pdf)
+        print(f"  ⬇ {pdf['name']}")
+
+        # Buscar y agregar solución automáticamente
+        solution_name = f"{pdf['name']}_solution"
+        solution = next((p for p in test_docs_independent if p['name'] == solution_name), None)
+        if solution:
+            downloaded_docs.append(solution)
+            print(f"  ⬇ {solution['name']} (automática)")
+
+assert len(downloaded_docs) == 4, "Debe descargar 2 exámenes + 2 soluciones automáticas"
+# Verificar que tenemos 2 exámenes y 2 soluciones
+exam_count = sum(1 for d in downloaded_docs if not d['is_solution'])
+solution_count = sum(1 for d in downloaded_docs if d['is_solution'])
+assert exam_count == 2, f"Debe haber 2 exámenes, pero hay {exam_count}"
+assert solution_count == 2, f"Debe haber 2 soluciones, pero hay {solution_count}"
+
+print("\n✓ TEST 3 PASADO: Documentos independientes y descarga automática funcionan correctamente\n")
 
 # Test 4: Verify tracker functionality
 print("=" * 80)

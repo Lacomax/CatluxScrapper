@@ -296,15 +296,16 @@ class PDFManager:
     def print_preview(self, pdfs: List[Dict], base_url: str, save_path: Optional[Path] = None) -> None:
         """
         Imprime preview de PDFs encontrados con títulos, categorías y estado local.
+        Muestra cada PDF (examen y solución) como documentos independientes, ordenados por REF.
 
         Args:
             pdfs: Lista de PDFs
             base_url: URL base para contexto
             save_path: Ruta donde se guardarían los PDFs (para mostrar estado local)
         """
-        print("\n" + "=" * 140)
+        print("\n" + "=" * 165)
         print("📋 PREVIEW DE PDFS ENCONTRADOS")
-        print("=" * 140)
+        print("=" * 165)
 
         url_parts = base_url.rstrip('/').split('/')
         subject = url_parts[-1]
@@ -322,50 +323,40 @@ class PDFManager:
         print(f"  - Ya descargados: {downloaded}")
         print(f"  - Nuevos: {new}\n")
 
-        print("-" * 140)
-        print(f"{'#':3} | {'EST':3} | {'LOC':3} | {'ID':6} | {'Ref':6} | {'Tipo':30} | {'Título':50}")
-        print("-" * 140)
+        # Extraer número de REF para ordenar
+        def extract_ref_number(pdf: Dict) -> int:
+            """Extrae el número de REF para ordenar (#3426 -> 3426)"""
+            doc_number = pdf.get('doc_number', '')
+            # Buscar patrones como #3426 o #130g
+            import re
+            match = re.search(r'#(\d+)', doc_number)
+            if match:
+                return int(match.group(1))
+            return 999999  # Si no encuentra número, poner al final
 
-        # Agrupar PDFs por ID para mostrar examen y solución juntos
-        grouped_by_id = {}
-        for i, pdf in enumerate(pdfs, 1):
-            pdf_id = pdf['name'].replace('_solution', '')
-            if pdf_id not in grouped_by_id:
-                grouped_by_id[pdf_id] = {
-                    'index': i,
-                    'exam': None,
-                    'solution': None,
-                    'doc_number': pdf.get('doc_number', ''),
-                    'doc_type': pdf.get('doc_type', ''),
-                    'doc_title': pdf.get('doc_title', ''),
-                    'is_local': False  # Se marca como True si al menos uno existe
-                }
+        # Ordenar PDFs por REF (número de referencia)
+        sorted_pdfs = sorted(pdfs, key=extract_ref_number)
 
-            if pdf['is_solution']:
-                grouped_by_id[pdf_id]['solution'] = pdf
-            else:
-                grouped_by_id[pdf_id]['exam'] = pdf
+        print("-" * 165)
+        print(f"{'#':3} | {'LOC':3} | {'TIPO':8} | {'ID':7} | {'REF':8} | {'Categoría':35} | {'Título':75}")
+        print("-" * 165)
 
-            # Marcar como local si cualquiera de los dos existe
-            if pdf.get('is_local', False):
-                grouped_by_id[pdf_id]['is_local'] = True
-
-        for pdf_id, items in grouped_by_id.items():
-            has_both = items['exam'] and items['solution']
-            status = "✓" if has_both else "⊘"
-            local_status = "D" if items['is_local'] else " "
+        for i, pdf in enumerate(sorted_pdfs, 1):
+            local_status = "✓" if pdf.get('is_local', False) else " "
+            doc_type = "Solution" if pdf['is_solution'] else "Exam"
 
             # Truncar datos para que quepan en columnas
-            doc_type_display = items['doc_type'][:28] if items['doc_type'] else "Documento"
-            doc_title_display = items['doc_title'][:48] if items['doc_title'] else "Sin título"
-            doc_number = items['doc_number'] if items['doc_number'] else f"#{pdf_id}"
+            doc_category = pdf.get('doc_type', 'Documento')[:33]
+            doc_title_display = pdf.get('doc_title', 'Sin título')[:73]
+            doc_number = pdf.get('doc_number', f"#{pdf['doc_id']}")
+            pdf_id = pdf['name'].replace('_solution', '')
 
-            print(f"{items['index']:3} | {status:3} | {local_status:3} | {pdf_id:6} | {doc_number:6} | {doc_type_display:30} | {doc_title_display:50}")
+            print(f"{i:3} | {local_status:3} | {doc_type:8} | {pdf_id:7} | {doc_number:8} | {doc_category:35} | {doc_title_display:75}")
 
-        print("-" * 140)
+        print("-" * 165)
         print(f"Total: {len(pdfs)} PDFs ({sum(1 for p in pdfs if not p['is_solution'])} exámenes + {sum(1 for p in pdfs if p['is_solution'])} soluciones)")
-        print("Leyenda: EST=Estado (✓=par, ⊘=uno), LOC=Local (D=descargado, -=nuevo), ID=ID descarga, Ref=Ref# CatLux")
-        print("=" * 140 + "\n")
+        print("Leyenda: LOC=Local (✓=descargado, -=nuevo), TIPO=Exam/Solution, ID=ID descarga, REF=Referencia CatLux")
+        print("=" * 165 + "\n")
 
 
 # ============================================================================
@@ -655,6 +646,9 @@ def download_filtered_pdfs(base_url: str, max_pages: int = 10,
         # Descargar solo los PDFs seleccionados
         pdfs_to_download = [pdfs[i] for i in selected_indices if i < len(pdfs)]
 
+        # Crear conjunto de IDs ya procesados para evitar descargar dos veces
+        processed_ids = set()
+
         for pdf in pdfs_to_download:
             if tracker.get_remaining_downloads() == 0:
                 logger.warning("Límite alcanzado, deteniendo descargas")
@@ -688,6 +682,36 @@ def download_filtered_pdfs(base_url: str, max_pages: int = 10,
                 tracker.record_download(pdf_name)
                 downloaded_count += 1
                 logger.info(f"⬇ {pdf_name}.pdf - descargado ({tracker.get_remaining_downloads()} restantes)")
+
+                # Si es examen, buscar y descargar automáticamente su solución
+                if not pdf['is_solution']:
+                    base_id = pdf['name']
+                    if base_id not in processed_ids:
+                        processed_ids.add(base_id)
+                        # Buscar la solución en la lista de PDFs
+                        solution_name = f"{base_id}_solution"
+                        solution = next((p for p in pdfs if p['name'] == solution_name), None)
+
+                        if solution:
+                            solution_path = full_save_path / (solution_name + ".pdf")
+
+                            # Descargar solución si no existe
+                            if not solution_path.exists():
+                                try:
+                                    r_sol = session.get(solution['full_url'], verify=False, timeout=30)
+                                    r_sol.raise_for_status()
+
+                                    with open(solution_path, 'wb') as f:
+                                        f.write(r_sol.content)
+
+                                    tracker.record_download(solution_name)
+                                    downloaded_count += 1
+                                    logger.info(f"⬇ {solution_name}.pdf - descargado ({tracker.get_remaining_downloads()} restantes)")
+
+                                except Exception as e:
+                                    logger.error(f"Error descargando solución {solution_name}: {e}")
+                            else:
+                                logger.info(f"✓ {solution_name}.pdf - ya existe")
 
             except Exception as e:
                 logger.error(f"Error descargando {pdf_name}: {e}")
