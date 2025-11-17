@@ -367,39 +367,13 @@ def mark_local_files(pdfs: List[Dict], save_path: Path) -> None:
     """
     Marca cuáles PDFs ya existen localmente.
 
-    Detecta variantes de nombres:
-    - 4750.pdf (examen)
-    - 4750_solution.pdf (solución)
-    - 4750 (1).pdf (variante - probablemente solución manual)
-    - 4750 (2).pdf (variante)
-
     Args:
         pdfs: Lista de PDFs a marcar
         save_path: Ruta donde buscar los archivos
     """
-    import re
-
     for pdf in pdfs:
-        pdf_id = pdf['name'].replace('_solution', '')
-
-        # Patrón estándar: {id}.pdf o {id}_solution.pdf
         pdf_file = save_path / (pdf['name'] + '.pdf')
-
-        if pdf_file.exists():
-            pdf['is_local'] = True
-            continue
-
-        # Si no existe con nombre estándar, buscar variantes
-        # Ejemplo: 4750 (1).pdf, 4750 (2).pdf, etc.
-        if save_path.exists():
-            # Buscar archivos que empiezan con el ID
-            for file in save_path.glob(f"{pdf_id}*.pdf"):
-                # Detectar patrones como "4750 (1).pdf", "4750 (2).pdf"
-                if re.match(rf"{re.escape(pdf_id)}\s*\(\d+\)\.pdf$", file.name):
-                    # Encontró una variante manual
-                    pdf['is_local'] = True
-                    logger.info(f"Detectado archivo local variante: {file.name} para {pdf['name']}")
-                    break
+        pdf['is_local'] = pdf_file.exists()
 
 
 def ask_download_selection(pdfs: List[Dict]) -> List[int]:
