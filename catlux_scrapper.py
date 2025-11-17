@@ -69,7 +69,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(LOG_FILE),
+        logging.FileHandler(LOG_FILE, encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
@@ -170,6 +170,10 @@ class PDFManager:
         """
         Obtiene la lista de PDFs de una URL.
 
+        Soporta dos tipos de páginas:
+        1. Páginas de categoría: /klasse-7/deutsch/
+        2. Páginas de búsqueda: /klasse-7/deutsch/aufsatz
+
         Args:
             base_url: URL base de la clase
             max_pages: Máximo de páginas a procesar
@@ -178,6 +182,7 @@ class PDFManager:
             Lista de diccionarios con información de PDFs
         """
         pdfs = []
+        found_docs = set()  # Para evitar duplicados
 
         for page_num in range(1, max_pages + 1):
             url = f"{base_url}?p={page_num}"
@@ -192,30 +197,66 @@ class PDFManager:
                 break
 
             soup = BeautifulSoup(response.content, "html.parser")
-            pdf_links = soup.select('a[href*="pdf"]')
 
-            if not pdf_links:
-                logger.info(f"No hay PDFs en página {page_num}")
+            # Buscar contenedores de documentos (div con clase "doc item list row")
+            doc_containers = soup.find_all('div', class_=lambda x: x and 'doc' in str(x) and 'item' in str(x))
+
+            if not doc_containers:
+                logger.info(f"No hay documentos en página {page_num}")
                 break
 
-            for link in pdf_links:
+            for container in doc_containers:
                 try:
-                    pdf_url = link.get('href', '')
-                    pdf_name = Path(pdf_url).name.replace("?dl=pdf", "")
+                    # Buscar enlaces de descarga dentro del contenedor
+                    # Patrones: probe/117356?dl=pdf, probe/117356?dl=pdf_solution
+                    pdf_links = container.find_all('a', href=lambda x: x and '?dl=' in x)
 
-                    # Extraer información del contexto HTML
-                    parent = link.find_parent('div', class_=lambda x: x and 'card' in x.lower())
-                    text_content = parent.get_text() if parent else link.get_text()
+                    for link in pdf_links:
+                        href = link.get('href', '')
 
-                    pdfs.append({
-                        'name': pdf_name,
-                        'url': pdf_url,
-                        'full_url': urljoin("https://www.catlux.de/", pdf_url),
-                        'is_solution': '_solution' in pdf_name,
-                        'text': text_content.strip()
-                    })
+                        # Extraer ID del documento y tipo
+                        # Ejemplo: "probe/117356?dl=pdf" -> ID=117356, type=pdf
+                        # Ejemplo: "probe/117356?dl=pdf_solution" -> ID=117356, type=solution
+
+                        if '?dl=' not in href:
+                            continue
+
+                        # Parsear href: "probe/117356?dl=pdf" o "probe/117356?dl=pdf_solution"
+                        parts = href.split('?dl=')
+                        if len(parts) != 2:
+                            continue
+
+                        path_part = parts[0]  # "probe/117356"
+                        dl_type = parts[1]   # "pdf" o "pdf_solution"
+
+                        # Extraer ID
+                        doc_id = path_part.split('/')[-1]  # "117356"
+
+                        # Crear nombre del archivo
+                        if 'solution' in dl_type:
+                            pdf_name = f"{doc_id}_solution"
+                        else:
+                            pdf_name = doc_id
+
+                        # Evitar duplicados
+                        if pdf_name in found_docs:
+                            continue
+
+                        found_docs.add(pdf_name)
+
+                        # Obtener URL absoluta
+                        full_url = urljoin("https://www.catlux.de/", href)
+
+                        pdfs.append({
+                            'name': pdf_name,
+                            'url': href,
+                            'full_url': full_url,
+                            'is_solution': 'solution' in dl_type,
+                            'text': container.get_text(strip=True)[:100]
+                        })
+
                 except Exception as e:
-                    logger.warning(f"Error procesando enlace: {e}")
+                    logger.warning(f"Error procesando contenedor: {e}")
                     continue
 
         return pdfs
