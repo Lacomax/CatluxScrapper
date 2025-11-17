@@ -567,6 +567,19 @@ def preview_pdfs(base_url: str, max_pages: int = 10) -> Tuple[List[Dict], List[i
         # Mostrar preview
         manager.print_preview(pdfs, base_url, full_save_path)
 
+        # IMPORTANTE: Reordenar la lista igual que en print_preview()
+        # para que los índices seleccionados correspondan a lo que el usuario vio
+        def extract_ref_number(pdf: Dict) -> int:
+            """Extrae el número de REF para ordenar (#3426 -> 3426)"""
+            doc_number = pdf.get('doc_number', '')
+            import re
+            match = re.search(r'#(\d+)', doc_number)
+            if match:
+                return int(match.group(1))
+            return 999999
+
+        pdfs = sorted(pdfs, key=extract_ref_number)
+
         # Pedir selección
         selected_indices = ask_download_selection(pdfs)
 
