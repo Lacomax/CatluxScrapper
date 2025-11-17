@@ -19,40 +19,42 @@ python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7
 
 **Resultado:**
 ```
-======================================================================
+================================================================================
 📋 PREVIEW DE PDFS ENCONTRADOS
-======================================================================
+================================================================================
 
-📚 Clase: KLASSE-7
-📖 Asignatura: DEUTSCH
+📚 Clase: DEUTSCH
+📖 Asignatura: AUFSATZ
 
-✓ 28 PDFs encontrados
-  - Exámenes: 14
-  - Soluciones: 14
-  - Ya descargados: 2
-  - Nuevos: 26
+✓ 48 PDFs encontrados
+  - Exámenes: 24
+  - Soluciones: 24
+  - Ya descargados: 1
+  - Nuevos: 47
 
-----------------------------------------------------------------------
-#  | EST | LOC | ID     | Ref     | Tipo                          | Título
-----------------------------------------------------------------------
-1  | ✓   | D   | 119215 | #3426   | Schulaufgabe                  | Deutsch Aufsatz Test
-2  | ✓   | D   | 118065 | #3425   | Aufsatz                       | Deutsch Essay Practice
-3  | ✓   |     | 117356 | #3424   | Schulaufgabe                  | Deutsch Grammar
-...
-----------------------------------------------------------------------
-Total: 28 PDFs (14 exámenes + 14 soluciones)
-Leyenda: EST=Estado (✓=par, ⊘=uno), LOC=Local (D=descargado, -=nuevo), ID=ID descarga, Ref=Ref# CatLux
-======================================================================
+#   | LOC | TIPO     | ID     | REF      | Categoría                       | Título
+----|-----|----------|--------|----------|----------------------------------|---
+  1 |     | Exam     | 112399 | #0309    | 0. Schulaufgabe, Aufsatz        | begründete Stellungnahme
+  2 |     | Solution | 112399 | #0309    | 0. Schulaufgabe, Aufsatz        | begründete Stellungnahme
+  3 |     | Exam     | 112780 | #0272    | 1. Schulaufgabe, Aufsatz        | Erlebnisschilderung
+  4 |     | Solution | 112780 | #0272    | 1. Schulaufgabe, Aufsatz        | Erlebnisschilderung
+ ...
+ 47 | ✓   | Exam     | 113132 | #0463    | 4. Schulaufgabe, Aufsatz        | begründete Stellungnahme
+ 48 |     | Solution | 113132 | #0463    | 4. Schulaufgabe, Aufsatz        | begründete Stellungnahme
+================================================================================
+Total: 48 PDFs (24 exámenes + 24 soluciones)
+Leyenda: LOC=Local (✓=descargado, -=nuevo), TIPO=Exam/Solution, ID=ID descarga, REF=Referencia CatLux
+================================================================================
 ```
 
 **Explicación:**
-- `#` = Número de fila (1-28)
-- `EST` = Estado (✓ = examen + solución, ⊘ = solo examen)
-- `LOC` = Local (D = ya descargado, espacio = nuevo)
+- `#` = Número de fila (1-48, ahora documentos independientes)
+- `LOC` = Local (✓ = ya descargado, espacio = nuevo)
+- `TIPO` = Tipo (Exam = examen, Solution = solución)
 - `ID` = ID interno de CatLux para descargar
-- `Ref` = Número de referencia de CatLux
-- `Tipo` = Categoría (Schulaufgabe, Aufsatz, etc.)
-- `Título` = Nombre del documento
+- `REF` = Número de referencia de CatLux (ordenado ascendentemente #0272, #0309, etc.)
+- `Categoría` = Tipo de ejercicio (Schulaufgabe, Aufsatz, etc.)
+- `Título` = Nombre del documento (hasta 75 caracteres)
 
 ### Paso 2: Seleccionar PDFs a Descargar
 
@@ -102,21 +104,30 @@ Selección: _
 
 ### Paso 3: Descargas
 
+Cuando el usuario selecciona exámenes individuales, el script **automáticamente descarga sus soluciones** si existen:
+
 ```
 🔄 Iniciando descargas...
 
-2024-11-17 14:30:45 - INFO - ⬇ 119215_solution.pdf - descargado (55 restantes)
-2024-11-17 14:30:47 - INFO - ✓ 119215.pdf - ya existe
-2024-11-17 14:30:49 - INFO - ⬇ 118065.pdf - descargado (54 restantes)
-2024-11-17 14:30:51 - INFO - ⬇ 118065_solution.pdf - descargado (53 restantes)
-2024-11-17 14:30:53 - INFO - Descarga completada: 3 nuevos PDFs
+2024-11-17 14:30:45 - INFO - ⬇ 113132.pdf - descargado (99 restantes)
+2024-11-17 14:30:46 - INFO - ⬇ 113132_solution.pdf - descargado (98 restantes)
+2024-11-17 14:30:48 - INFO - ✓ 119215.pdf - ya existe
+2024-11-17 14:30:50 - INFO - ⬇ 118065.pdf - descargado (97 restantes)
+2024-11-17 14:30:52 - INFO - ⬇ 118065_solution.pdf - descargado (96 restantes)
+2024-11-17 14:30:54 - INFO - Descarga completada: 4 nuevos PDFs
 ```
 
-**Comportamiento:**
-- ✓ = PDF ya existe (no se descarga)
+**Comportamiento automático:**
+- Si selecciona: `1,3,5` (examen en 1, solución en 2; examen en 3, solución en 4; etc.)
+- El script descarga los exámenes **Y automáticamente sus soluciones**
 - ⬇ = PDF descargado (nuevo)
-- ⊘ = Solución saltada (examen no existe)
-- Muestra descargas restantes
+- ✓ = PDF ya existe localmente (saltado)
+- Muestra descargas restantes de las 100/mes
+
+**Conteo inteligente:**
+- Cada PDF (examen + solución) cuenta como 2 descargas
+- Seleccionar 3 exámenes = ~6 descargas (3 exam + 3 solutions)
+- El script es honesto con el contador de CatLux
 
 ### Paso 4: Estado Final
 
@@ -196,15 +207,25 @@ python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7
 → Selecciona "new" para descargar solo nuevos
 → Script descarga solo los nuevos
 
-### Caso 3: Descargar específicos
+### Caso 3: Descargar solo exámenes sin soluciones
 ```bash
 python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7/deutsch/"
 ```
-→ Preview muestra todos
-→ Selecciona "2,5,7" para descargar solo esos 3
-→ Script descarga solo los seleccionados
+→ Preview muestra todos (examen y solución por separado)
+→ Selecciona "1,3,5" (solo los exámenes, no los números pares para soluciones)
+→ Script descarga exámenes + **automáticamente sus soluciones**
+→ Resultado: Descarga 3 exámenes + 3 soluciones automáticamente
 
-### Caso 4: Ver saldo
+### Caso 4: Descargar exámenes específicos pero no sus soluciones
+```bash
+python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7/deutsch/"
+```
+→ Preview muestra todos (examen en fila impar, solución en fila par)
+→ Selecciona solo números impares: "1,5,9" (los exámenes)
+→ Script descarga los exámenes + automáticamente sus soluciones
+**Nota:** El script siempre descarga solución con examen, no hay forma de descargar solo examen sin solución
+
+### Caso 5: Ver saldo disponible
 ```bash
 python catlux_scrapper.py --info
 ```
