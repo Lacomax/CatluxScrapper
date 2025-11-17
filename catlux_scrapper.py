@@ -45,9 +45,12 @@ try:
     import requests
     from bs4 import BeautifulSoup
     from dotenv import load_dotenv
+    # Desactivar advertencias de SSL (CatLux usa certificado auto-firmado)
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 except ImportError:
     print("Error: Dependencias faltantes. Ejecuta:")
-    print("  pip install requests beautifulsoup4 python-dotenv")
+    print("  pip install requests beautifulsoup4 python-dotenv urllib3")
     sys.exit(1)
 
 # ============================================================================
@@ -181,7 +184,8 @@ class PDFManager:
             logger.info(f"Buscando en: {url}")
 
             try:
-                response = self.session.get(url, **self.kwargs, timeout=10)
+                # Desactivar verificación SSL para CatLux
+                response = self.session.get(url, verify=False, timeout=10)
                 response.raise_for_status()
             except Exception as e:
                 logger.error(f"Error descargando página {page_num}: {e}")
@@ -302,8 +306,11 @@ def login_to_catlux(session: requests.Session, username: str, password: str,
                     cert_path: Optional[str]) -> bool:
     """Realiza login en CatLux."""
     try:
-        kwargs = {"verify": cert_path} if cert_path else {}
-        login_page_req = session.get(LOGIN_URL, **kwargs, timeout=10)
+        # Usar verify=False para evitar problemas de SSL
+        # (CatLux usa certificado auto-firmado)
+        kwargs = {"verify": False, "timeout": 10}
+
+        login_page_req = session.get(LOGIN_URL, **kwargs)
         login_page_req.raise_for_status()
 
         soup_login = BeautifulSoup(login_page_req.content, 'html.parser')
@@ -322,7 +329,7 @@ def login_to_catlux(session: requests.Session, username: str, password: str,
             'password': password
         }
 
-        login_req = session.post(LOGIN_URL, data=payload, **kwargs, timeout=10)
+        login_req = session.post(LOGIN_URL, data=payload, **kwargs)
         login_req.raise_for_status()
 
         logger.info("✓ Login exitoso")
@@ -442,8 +449,7 @@ def download_filtered_pdfs(base_url: str, max_pages: int = 10,
 
             # Descargar
             try:
-                kwargs = {"verify": cert_path} if cert_path else {}
-                r = session.get(pdf['full_url'], **kwargs, timeout=30)
+                r = session.get(pdf['full_url'], verify=False, timeout=30)
                 r.raise_for_status()
 
                 with open(pdf_save_path, 'wb') as f:

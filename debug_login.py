@@ -8,6 +8,10 @@ import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import os
+import urllib3
+
+# Desactivar advertencia de SSL
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 load_dotenv()
 
@@ -19,8 +23,8 @@ print(f"Email: {username}")
 print(f"URL de login: {LOGIN_URL}\n")
 
 try:
-    print("1️⃣ Intentando obtener la página de login...")
-    response = requests.get(LOGIN_URL, timeout=10)
+    print("1️⃣ Intentando obtener la página de login (sin verificar SSL)...")
+    response = requests.get(LOGIN_URL, verify=False, timeout=10)
     print(f"   Status: {response.status_code}")
 
     soup = BeautifulSoup(response.content, 'html.parser')
