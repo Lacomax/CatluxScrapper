@@ -281,15 +281,15 @@ class PDFManager:
 
     def print_preview(self, pdfs: List[Dict], base_url: str) -> None:
         """
-        Imprime preview de PDFs encontrados.
+        Imprime preview de PDFs encontrados con títulos y categorías.
 
         Args:
             pdfs: Lista de PDFs
             base_url: URL base para contexto
         """
-        print("\n" + "=" * 70)
+        print("\n" + "=" * 100)
         print("📋 PREVIEW DE PDFS ENCONTRADOS")
-        print("=" * 70)
+        print("=" * 100)
 
         url_parts = base_url.rstrip('/').split('/')
         subject = url_parts[-1]
@@ -297,23 +297,38 @@ class PDFManager:
         print(f"\n📚 Clase: {klasse.replace('klasse-', '').upper()}")
         print(f"📖 Asignatura: {subject.upper()}\n")
 
-        grouped = self.group_by_category(pdfs)
-
         print(f"✓ {len(pdfs)} PDFs encontrados")
         print(f"  - Exámenes: {sum(1 for p in pdfs if not p['is_solution'])}")
         print(f"  - Soluciones: {sum(1 for p in pdfs if p['is_solution'])}\n")
 
-        print("-" * 70)
+        print("-" * 100)
         print("Archivos encontrados:")
-        print("-" * 70)
+        print("-" * 100)
 
-        for i, (key, items) in enumerate(grouped.items(), 1):
-            status = "✓" if len(items) > 1 else "⊘"
-            print(f"{i:3}. [{status}] {key}")
+        # Agrupar PDFs por ID para mostrar examen y solución juntos
+        grouped_by_id = {}
+        for pdf in pdfs:
+            pdf_id = pdf['name'].replace('_solution', '')
+            if pdf_id not in grouped_by_id:
+                grouped_by_id[pdf_id] = {'exam': None, 'solution': None, 'text': pdf['text']}
 
-        print("-" * 70)
-        print(f"Total: {len(pdfs)} PDFs")
-        print("=" * 70 + "\n")
+            if pdf['is_solution']:
+                grouped_by_id[pdf_id]['solution'] = pdf
+            else:
+                grouped_by_id[pdf_id]['exam'] = pdf
+
+        for i, (pdf_id, items) in enumerate(grouped_by_id.items(), 1):
+            has_both = items['exam'] and items['solution']
+            status = "✓" if has_both else "⊘"
+
+            # Truncar el texto para que quepa en la línea
+            text_display = items['text'][:60] if items['text'] else ""
+
+            print(f"{i:3}. [{status}] ID: {pdf_id:6} - {text_display}")
+
+        print("-" * 100)
+        print(f"Total: {len(pdfs)} PDFs ({sum(1 for p in pdfs if not p['is_solution'])} exámenes + {sum(1 for p in pdfs if p['is_solution'])} soluciones)")
+        print("=" * 100 + "\n")
 
 
 # ============================================================================
