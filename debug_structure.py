@@ -84,20 +84,25 @@ try:
 
     print("\n6️⃣ Estructura HTML de los resultados (primeros 2000 caracteres)...")
 
-    # Buscar divs o sections que contengan los documentos
-    containers = soup.find_all(['div', 'article', 'li'], class_=lambda x: x and any(word in str(x).lower() for word in ['document', 'item', 'result', 'card', 'entry', 'probe', 'pdf']))
+    # Buscar divs con clase "doc item list row" (documentos)
+    containers = soup.find_all('div', class_=lambda x: x and 'doc' in str(x) and 'item' in str(x))
 
     if containers:
         print(f"   Contenedores encontrados: {len(containers)}")
         for i, container in enumerate(containers[:3], 1):
             print(f"\n   Contenedor {i}:")
-            print(container.prettify()[:500])
+            print(f"      HTML completo del contenedor:")
+            print(container.prettify()[:1500])
+
+            # Buscar todos los enlaces en este contenedor
+            links_in_container = container.find_all('a', href=True)
+            print(f"\n      Enlaces en este contenedor: {len(links_in_container)}")
+            for j, link in enumerate(links_in_container[:5], 1):
+                href = link.get('href')
+                text = link.get_text(strip=True)[:40]
+                print(f"         {j}. href={href:60} text='{text}'")
     else:
-        print("   No se encontraron contenedores específicos")
-        print("\n   Mostrando primeros 1500 caracteres del body...")
-        body = soup.find('body')
-        if body:
-            print(body.prettify()[:1500])
+        print("   No se encontraron contenedores de documentos")
 
 except Exception as e:
     print(f"❌ Error: {e}")
