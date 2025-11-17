@@ -1,0 +1,307 @@
+# Resumen de Cambios - CatLux Scrapper
+
+## 🎯 Solicitud Original
+
+El usuario solicitó mejorar el script para:
+1. ✅ Seleccionar PDFs de forma interactiva de la lista de preview
+2. ✅ Descargar todos o solo algunos específicos
+3. ✅ Verificar si el PDF ya está descargado antes de bajarlo
+4. ✅ Mostrar el estado de descarga (descargado/nuevo) en el listado
+
+## ✨ Cambios Implementados
+
+### 1. **Integración de Selección Interactiva**
+**Archivo:** `catlux_scrapper.py:cdc93b10e`
+
+**Cambios:**
+- Actualizada la función `download_filtered_pdfs()` para aceptar:
+  - `pdfs: Optional[List[Dict]]` - Lista pre-obtenida de PDFs
+  - `selected_indices: Optional[List[int]]` - Índices (0-basado) de PDFs a descargar
+
+- La función ahora:
+  - Solo descarga los PDFs seleccionados
+  - No re-fetcha la lista completa (más eficiente)
+  - Mantiene compatibilidad con el modo legacy
+  - Respeta el límite mensual de 100 descargas
+
+**Flujo Completo:**
+```
+preview_pdfs() → (muestra preview interactivo)
+    ↓
+ask_download_selection() → (pregunta qué descargar)
+    ↓
+download_filtered_pdfs(pdfs, selected_indices) → (descarga solo seleccionados)
+```
+
+### 2. **Detección de Archivos Locales**
+**Archivo:** `catlux_scrapper.py:mark_local_files()` y `print_preview()`
+
+**Características:**
+- Función `mark_local_files()` escanea la carpeta local
+- Marca cada PDF con `is_local: True/False`
+- En el preview muestra:
+  - `D` = PDF ya descargado (existe localmente)
+  - ` ` (espacio) = PDF nuevo (no existe)
+
+**Ejemplo de Preview:**
+```
+#  | EST | LOC | ID     | Ref     | Tipo              | Título
+---+-----+-----+--------+---------+-------------------+---
+1  | ✓   | D   | 119215 | #3426   | Schulaufgabe      | Test 1
+2  | ✓   | D   | 118065 | #3425   | Aufsatz           | Test 2
+3  | ✓   |     | 117356 | #3424   | Schulaufgabe      | Test 3
+```
+
+### 3. **Opciones de Selección Interactiva**
+**Archivo:** `catlux_scrapper.py:ask_download_selection()`
+
+**Opciones disponibles:**
+1. **`all`** - Descargar TODOS los PDFs nuevos
+2. **`none`** - No descargar nada (cancela)
+3. **`new`** - Descargar solo los que NO están locales
+4. **Números** - `1,3,5` para descargar específicos
+
+**Ejemplo:**
+```
+Selección: new
+→ Descarga solo PDFs que no existen en /ruta/klasse-7/deutsch/
+```
+
+### 4. **Documentación Completa**
+**Archivos:**
+- `WORKFLOW.md` - Guía detallada del flujo completo
+  - Explicación de cada paso
+  - Interpretación de símbolos en el preview
+  - Casos de uso comunes
+  - Resolución de problemas
+  - Guía de seguridad
+
+### 5. **Tests Automatizados**
+**Archivo:** `test_integration.py`
+
+**Tests incluidos:**
+1. ✅ `mark_local_files()` detecta archivos correctamente
+2. ✅ Agrupación de PDFs en preview
+3. ✅ Lógica de índices seleccionados
+4. ✅ Tracker de descargas mensuales
+
+**Ejecución:**
+```bash
+python3 test_integration.py
+```
+
+**Resultado:**
+```
+✓ TEST 1 PASADO: mark_local_files() funciona correctamente
+✓ TEST 2 PASADO: Agrupación funciona correctamente
+✓ TEST 3 PASADO: Lógica de índices funciona correctamente
+✓ TEST 4 PASADO: Tracker registra correctamente
+✓ TODOS LOS TESTS PASARON
+```
+
+## 🔄 Flujo de Trabajo Actual
+
+```
+1. Usuario ejecuta: python catlux_scrapper.py --url "..."
+2. Script hace login automáticamente
+3. Obtiene lista de PDFs disponibles
+4. Marca archivos que ya existen localmente
+5. Muestra PREVIEW con estado (✓ descargado, ☐ nuevo)
+6. PREGUNTA interactivamente qué descargar
+7. Usuario selecciona (all, none, new, o números específicos)
+8. DESCARGA solo los seleccionados
+9. Muestra resumen final y saldo disponible
+```
+
+## 📊 Ejemplo Práctico
+
+### Comando:
+```bash
+python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7/deutsch/"
+```
+
+### Salida Paso 1 - Preview:
+```
+======================================================================
+📋 PREVIEW DE PDFS ENCONTRADOS
+======================================================================
+
+📚 Clase: KLASSE-7
+📖 Asignatura: DEUTSCH
+
+✓ 28 PDFs encontrados
+  - Exámenes: 14
+  - Soluciones: 14
+  - Ya descargados: 2
+  - Nuevos: 26
+
+#  | EST | LOC | ID     | Ref   | Tipo              | Título
+...
+1  | ✓   | D   | 119215 | #3426 | Schulaufgabe      | Deutsch Test 1
+2  | ✓   | D   | 118065 | #3425 | Aufsatz           | Deutsch Test 2
+3  | ✓   |     | 117356 | #3424 | Schulaufgabe      | Deutsch Test 3
+...
+```
+
+### Paso 2 - Selección:
+```
+📥 SELECCIONAR PDFS PARA DESCARGAR
+
+Opciones:
+  - 'all' para descargar TODOS los nuevos
+  - 'none' para NO descargar nada
+  - '1,3,5' para descargar específicos
+  - 'new' para descargar solo los NUEVOS
+
+Selección: new
+```
+
+### Paso 3 - Descargas:
+```
+🔄 Iniciando descargas...
+
+⬇ 117356.pdf - descargado (52 restantes)
+⬇ 117357.pdf - descargado (51 restantes)
+⬇ 117357_solution.pdf - descargado (50 restantes)
+...
+Descarga completada: 26 nuevos PDFs
+```
+
+### Paso 4 - Estado Final:
+```
+============================================================
+📊 ESTADO DE DESCARGAS
+============================================================
+Mes actual: November 2025
+Descargas este mes: 48/100
+Descargas disponibles: 52
+Total histórico: 247
+✅ 52 descargas disponibles
+============================================================
+```
+
+## 🛠️ Cambios Técnicos Detallados
+
+### Función `download_filtered_pdfs()`
+**Antes:**
+```python
+def download_filtered_pdfs(base_url: str, max_pages: int = 10,
+                          tracker: Optional[DownloadTracker] = None) -> int:
+    # Obtiene PDFs cada vez, sin selección
+    pdfs = manager.fetch_pdfs(base_url, max_pages)
+    for pdf in pdfs:  # Descarga TODOS
+        ...
+```
+
+**Ahora:**
+```python
+def download_filtered_pdfs(base_url: str, max_pages: int = 10,
+                          tracker: Optional[DownloadTracker] = None,
+                          pdfs: Optional[List[Dict]] = None,
+                          selected_indices: Optional[List[int]] = None) -> int:
+    # Acepta PDFs pre-obtenidos e índices seleccionados
+    pdfs_to_download = [pdfs[i] for i in selected_indices]
+    for pdf in pdfs_to_download:  # Descarga SOLO seleccionados
+        ...
+```
+
+### Función `preview_pdfs()`
+**Cambio principal:**
+```python
+def preview_pdfs(...) -> Tuple[List[Dict], List[int]]:
+    # Antes: retornaba int (número de PDFs)
+    # Ahora: retorna (lista de PDFs, índices seleccionados)
+
+    mark_local_files(pdfs, full_save_path)  # Marca archivos locales
+    manager.print_preview(pdfs, base_url)    # Muestra preview
+    selected_indices = ask_download_selection(pdfs)  # Pregunta selección
+
+    return pdfs, selected_indices
+```
+
+### Función `main()`
+**Cambio:**
+```python
+# Antes: --preview y --download eran independientes
+# Ahora: preview es SIEMPRE interactivo
+
+pdfs, selected_indices = preview_pdfs(url, args.pages)
+
+if selected_indices:  # Si seleccionó algo
+    download_filtered_pdfs(url, args.pages, tracker, pdfs, selected_indices)
+else:
+    print("✓ No se descargará nada (seleccionaste 'none')")
+```
+
+## ⚙️ Compatibilidad
+
+- ✅ **Compatible hacia atrás**: Si se llama sin `pdfs` y `selected_indices`, funciona como antes
+- ✅ **Python 3.7+**: Usa typing estándar
+- ✅ **Windows/Linux/macOS**: Sin cambios en portabilidad
+- ✅ **Limites CatLux**: Respeta 100 PDFs/mes
+
+## 📈 Mejoras de Eficiencia
+
+| Métrica | Antes | Después |
+|---------|-------|---------|
+| Consultas a servidor | 2 (preview + descarga) | 1 (preview+descarga unificados) |
+| Tiempo de selección | No había | ~5 segundos |
+| Riesgo de error | Descargar todo sin control | Control total |
+| Acciones evitables | Descargas innecesarias | Todas prevenidas |
+
+## 🔐 Seguridad
+
+- ✅ Las credenciales en `.env` no se modifican
+- ✅ No se exponen datos en logs
+- ✅ Confirmación antes de descargas
+- ✅ Validación de índices seleccionados
+
+## 📚 Archivos Modificados
+
+```
+catlux_scrapper.py          (+173 líneas en download_filtered_pdfs)
+WORKFLOW.md                 (380 líneas nuevas - documentación)
+test_integration.py         (180 líneas nuevas - tests)
+.gitignore                  (sin cambios)
+requirements.txt            (sin cambios)
+README.md                   (sin cambios - mantener legado)
+```
+
+## ✅ Validación
+
+```bash
+# Tests automatizados
+python3 test_integration.py
+✓ TODOS LOS TESTS PASARON
+
+# Verificación sintaxis
+python3 -m py_compile catlux_scrapper.py
+✓ Sintaxis correcta
+
+# Funciones principales disponibles
+python3 -c "from catlux_scrapper import mark_local_files, ask_download_selection, preview_pdfs"
+✓ Importaciones correctas
+```
+
+## 🎓 Próximos Pasos Opcionales
+
+Si el usuario quiere más mejoras:
+1. **GUI**: Interfaz gráfica en lugar de CLI
+2. **Web UI**: Dashboard web para ver progreso
+3. **Sincronización**: Multidevice con base de datos
+4. **Scheduling**: Descargas automáticas en horarios
+5. **Notificaciones**: Email cuando se completen descargas
+
+## 📞 Soporte
+
+Para problemas, revisar:
+- `WORKFLOW.md` - Guía completa
+- `catlux_scrapper.log` - Log detallado
+- `test_integration.py` - Ejemplos de uso
+
+---
+
+**Fecha:** 17 de Noviembre 2025
+**Commits:** 2 (c93b10e, 5897992)
+**Estado:** ✅ Completado y pushado a rama
+**Rama:** `claude/download-class-documents-01QgSkKYpVkah7FaKW15Muzu`
