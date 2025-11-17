@@ -293,17 +293,18 @@ class PDFManager:
 
         return dict(grouped)
 
-    def print_preview(self, pdfs: List[Dict], base_url: str) -> None:
+    def print_preview(self, pdfs: List[Dict], base_url: str, save_path: Optional[Path] = None) -> None:
         """
-        Imprime preview de PDFs encontrados con títulos y categorías.
+        Imprime preview de PDFs encontrados con títulos, categorías y estado local.
 
         Args:
             pdfs: Lista de PDFs
             base_url: URL base para contexto
+            save_path: Ruta donde se guardarían los PDFs (para mostrar estado local)
         """
-        print("\n" + "=" * 130)
+        print("\n" + "=" * 140)
         print("📋 PREVIEW DE PDFS ENCONTRADOS")
-        print("=" * 130)
+        print("=" * 140)
 
         url_parts = base_url.rstrip('/').split('/')
         subject = url_parts[-1]
@@ -311,25 +312,33 @@ class PDFManager:
         print(f"\n📚 Clase: {klasse.replace('klasse-', '').upper()}")
         print(f"📖 Asignatura: {subject.upper()}\n")
 
+        # Contar estado
+        downloaded = sum(1 for p in pdfs if p.get('is_local', False))
+        new = sum(1 for p in pdfs if not p.get('is_local', False))
+
         print(f"✓ {len(pdfs)} PDFs encontrados")
         print(f"  - Exámenes: {sum(1 for p in pdfs if not p['is_solution'])}")
-        print(f"  - Soluciones: {sum(1 for p in pdfs if p['is_solution'])}\n")
+        print(f"  - Soluciones: {sum(1 for p in pdfs if p['is_solution'])}")
+        print(f"  - Ya descargados: {downloaded}")
+        print(f"  - Nuevos: {new}\n")
 
-        print("-" * 130)
-        print(f"{'#':3} | {'EST':3} | {'ID':6} | {'Ref':6} | {'Tipo':30} | {'Título':50}")
-        print("-" * 130)
+        print("-" * 140)
+        print(f"{'#':3} | {'EST':3} | {'LOC':3} | {'ID':6} | {'Ref':6} | {'Tipo':30} | {'Título':50}")
+        print("-" * 140)
 
         # Agrupar PDFs por ID para mostrar examen y solución juntos
         grouped_by_id = {}
-        for pdf in pdfs:
+        for i, pdf in enumerate(pdfs, 1):
             pdf_id = pdf['name'].replace('_solution', '')
             if pdf_id not in grouped_by_id:
                 grouped_by_id[pdf_id] = {
+                    'index': i,
                     'exam': None,
                     'solution': None,
                     'doc_number': pdf.get('doc_number', ''),
                     'doc_type': pdf.get('doc_type', ''),
-                    'doc_title': pdf.get('doc_title', '')
+                    'doc_title': pdf.get('doc_title', ''),
+                    'is_local': False  # Se marca como True si al menos uno existe
                 }
 
             if pdf['is_solution']:
@@ -337,21 +346,102 @@ class PDFManager:
             else:
                 grouped_by_id[pdf_id]['exam'] = pdf
 
-        for i, (pdf_id, items) in enumerate(grouped_by_id.items(), 1):
+            # Marcar como local si cualquiera de los dos existe
+            if pdf.get('is_local', False):
+                grouped_by_id[pdf_id]['is_local'] = True
+
+        for pdf_id, items in grouped_by_id.items():
             has_both = items['exam'] and items['solution']
             status = "✓" if has_both else "⊘"
+            local_status = "D" if items['is_local'] else " "
 
             # Truncar datos para que quepan en columnas
             doc_type_display = items['doc_type'][:28] if items['doc_type'] else "Documento"
             doc_title_display = items['doc_title'][:48] if items['doc_title'] else "Sin título"
             doc_number = items['doc_number'] if items['doc_number'] else f"#{pdf_id}"
 
-            print(f"{i:3} | {status:3} | {pdf_id:6} | {doc_number:6} | {doc_type_display:30} | {doc_title_display:50}")
+            print(f"{items['index']:3} | {status:3} | {local_status:3} | {pdf_id:6} | {doc_number:6} | {doc_type_display:30} | {doc_title_display:50}")
 
-        print("-" * 130)
+        print("-" * 140)
         print(f"Total: {len(pdfs)} PDFs ({sum(1 for p in pdfs if not p['is_solution'])} exámenes + {sum(1 for p in pdfs if p['is_solution'])} soluciones)")
-        print("Leyenda: EST=Estado (✓=par completo, ⊘=solo uno), ID=ID de descarga, Ref=Ref# en CatLux")
-        print("=" * 130 + "\n")
+        print("Leyenda: EST=Estado (✓=par, ⊘=uno), LOC=Local (D=descargado, -=nuevo), ID=ID descarga, Ref=Ref# CatLux")
+        print("=" * 140 + "\n")
+
+
+# ============================================================================
+# FUNCIONES DE UTILIDAD
+# ============================================================================
+
+def mark_local_files(pdfs: List[Dict], save_path: Path) -> None:
+    """
+    Marca cuáles PDFs ya existen localmente.
+
+    Args:
+        pdfs: Lista de PDFs a marcar
+        save_path: Ruta donde buscar los archivos
+    """
+    for pdf in pdfs:
+        pdf_file = save_path / (pdf['name'] + '.pdf')
+        pdf['is_local'] = pdf_file.exists()
+
+
+def ask_download_selection(pdfs: List[Dict]) -> List[int]:
+    """
+    Pregunta al usuario qué PDFs descargar de forma interactiva.
+
+    Args:
+        pdfs: Lista de PDFs disponibles
+
+    Returns:
+        Lista de índices (0-basado) de PDFs a descargar
+    """
+    print("\n" + "=" * 80)
+    print("📥 SELECCIONAR PDFS PARA DESCARGAR")
+    print("=" * 80)
+    print("\nOpciones:")
+    print("  - Escribe 'all' para descargar TODOS los PDFs nuevos")
+    print("  - Escribe 'none' para NO descargar nada")
+    print("  - Escribe números separados por comas: 1,3,5 para descargar esos")
+    print("  - Escribe 'new' para descargar solo los NUEVOS (no los ya descargados)")
+    print("\n" + "=" * 80)
+
+    while True:
+        try:
+            user_input = input("\nSelección: ").strip().lower()
+
+            if user_input == 'all':
+                return list(range(len(pdfs)))
+
+            elif user_input == 'none':
+                return []
+
+            elif user_input == 'new':
+                # Agrupar por ID para obtener índices únicos de nuevos
+                new_indices = set()
+                for i, pdf in enumerate(pdfs):
+                    if not pdf.get('is_local', False):
+                        # Obtener el índice del PDF sin solución (el grupo)
+                        pdf_id = pdf['name'].replace('_solution', '')
+                        # Buscar el índice del examen (el primero)
+                        for j, p in enumerate(pdfs):
+                            if p['name'] == pdf_id:
+                                new_indices.add(j)
+                                break
+                return sorted(list(new_indices))
+
+            else:
+                # Parsear números
+                indices = [int(x.strip()) - 1 for x in user_input.split(',')]
+                # Validar
+                if all(0 <= i < len(pdfs) for i in indices):
+                    return sorted(list(set(indices)))  # Eliminar duplicados y ordenar
+                else:
+                    print(f"❌ Números inválidos. Rango válido: 1-{len(pdfs)}")
+                    continue
+
+        except (ValueError, IndexError):
+            print("❌ Entrada inválida. Intenta de nuevo.")
+            continue
 
 
 # ============================================================================
@@ -446,45 +536,76 @@ def login_to_catlux(session: requests.Session, username: str, password: str,
 # FUNCIONES DE DESCARGA Y PREVIEW
 # ============================================================================
 
-def preview_pdfs(base_url: str, max_pages: int = 10) -> int:
+def preview_pdfs(base_url: str, max_pages: int = 10) -> Tuple[List[Dict], List[int]]:
     """
-    Muestra preview de PDFs sin descargar.
+    Muestra preview de PDFs y pregunta cuáles descargar.
 
     Args:
         base_url: URL base de la clase
         max_pages: Máximo de páginas a procesar
 
     Returns:
-        Número de PDFs encontrados
+        Tupla de (lista de PDFs, índices a descargar)
     """
-    username, password, cert_path, _ = get_credentials()
-    if not all([username, password]):
-        return 0
+    username, password, cert_path, save_base_path = get_credentials()
+    if not all([username, password, save_base_path]):
+        return [], []
+
+    # Extraer carpeta de destino
+    try:
+        url_parts = base_url.rstrip('/').split('/')
+        subject_folder = url_parts[-1]
+        class_folder = url_parts[-2]
+        full_save_path = Path(save_base_path) / class_folder / subject_folder
+    except (IndexError, ValueError) as e:
+        logger.error(f"Error parseando URL: {e}")
+        return [], []
 
     session = requests.Session()
 
     try:
         if not login_to_catlux(session, username, password, cert_path):
-            return 0
+            return [], []
 
         manager = PDFManager(session, cert_path)
         pdfs = manager.fetch_pdfs(base_url, max_pages)
 
-        manager.print_preview(pdfs, base_url)
-        return len(pdfs)
+        # Marcar archivos locales
+        mark_local_files(pdfs, full_save_path)
+
+        # Mostrar preview
+        manager.print_preview(pdfs, base_url, full_save_path)
+
+        # Pedir selección
+        selected_indices = ask_download_selection(pdfs)
+
+        return pdfs, selected_indices
 
     except Exception as e:
         logger.error(f"Error en preview: {e}")
-        return 0
+        return [], []
 
     finally:
         session.close()
 
 
 def download_filtered_pdfs(base_url: str, max_pages: int = 10,
-                          tracker: Optional[DownloadTracker] = None) -> int:
-    """Descarga PDFs de una clase desde CatLux."""
+                          tracker: Optional[DownloadTracker] = None,
+                          pdfs: Optional[List[Dict]] = None,
+                          selected_indices: Optional[List[int]] = None) -> int:
+    """
+    Descarga PDFs de una clase desde CatLux.
 
+    Args:
+        base_url: URL base de la clase
+        max_pages: Máximo de páginas (solo usado si pdfs es None)
+        tracker: Rastreador de descargas
+        pdfs: Lista pre-obtenida de PDFs (si es None, se obtiene)
+        selected_indices: Índices de PDFs a descargar (0-basado)
+
+    Returns:
+        Número de PDFs descargados
+    """
     if tracker is None:
         tracker = DownloadTracker(TRACKER_FILE)
 
@@ -519,15 +640,22 @@ def download_filtered_pdfs(base_url: str, max_pages: int = 10,
             logger.error("No se pudo completar el login")
             return 0
 
-        manager = PDFManager(session, cert_path)
-        pdfs = manager.fetch_pdfs(base_url, max_pages)
+        # Si no se pasaron PDFs, obtenerlos ahora
+        if pdfs is None:
+            manager = PDFManager(session, cert_path)
+            pdfs = manager.fetch_pdfs(base_url, max_pages)
+            # Si no se especificaron índices, descargar todos
+            if selected_indices is None:
+                selected_indices = list(range(len(pdfs)))
 
-        # Mostrar preview antes de descargar
-        manager.print_preview(pdfs, base_url)
+        manager = PDFManager(session, cert_path)
 
         print("\n🔄 Iniciando descargas...\n")
 
-        for pdf in pdfs:
+        # Descargar solo los PDFs seleccionados
+        pdfs_to_download = [pdfs[i] for i in selected_indices if i < len(pdfs)]
+
+        for pdf in pdfs_to_download:
             if tracker.get_remaining_downloads() == 0:
                 logger.warning("Límite alcanzado, deteniendo descargas")
                 break
@@ -679,22 +807,21 @@ def main():
             print("      python catlux_scrapper.py --info")
             return 1
 
-    # Preview o descargar
-    if args.preview:
-        logger.info(f"Iniciando preview desde: {url}")
-        count = preview_pdfs(url, args.pages)
-        print(f"\nℹ️  Ejecuta: python catlux_scrapper.py --download --url '{url}' para descargar")
-        return 0
-
-    if args.download:
-        logger.info(f"Iniciando descarga desde: {url}")
-        download_filtered_pdfs(url, args.pages, tracker)
-        return 0
-
-    # Default: preview
+    # Preview (siempre interactivo - pregunta qué descargar)
     logger.info(f"Iniciando preview desde: {url}")
-    count = preview_pdfs(url, args.pages)
-    print(f"\nℹ️  Ejecuta: python catlux_scrapper.py --download --url '{url}' para descargar")
+    pdfs, selected_indices = preview_pdfs(url, args.pages)
+
+    if not pdfs:
+        logger.error("No se encontraron PDFs")
+        return 1
+
+    # Si se seleccionaron PDFs para descargar, ejecutar descarga
+    if selected_indices:
+        logger.info(f"Descargando {len(selected_indices)} PDFs seleccionados...")
+        download_filtered_pdfs(url, args.pages, tracker, pdfs, selected_indices)
+    else:
+        print("\n✓ No se descargará nada (seleccionaste 'none')")
+
     return 0
 
 
