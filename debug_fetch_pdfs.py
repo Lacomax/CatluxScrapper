@@ -63,6 +63,10 @@ try:
 
             print(f"   Clase: {container.get('class')}")
 
+            print(f"\n   HTML COMPLETO DEL CONTENEDOR:")
+            html_str = container.prettify()
+            print(html_str[:2500])  # Primeros 2500 caracteres
+
             # Búsqueda método 1: find_all con lambda
             print(f"\n   Método 1: container.find_all('a', href=lambda x: x and '?dl=' in x)")
             pdf_links_1 = container.find_all('a', href=lambda x: x and '?dl=' in x)
