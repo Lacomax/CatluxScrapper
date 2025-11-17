@@ -174,6 +174,9 @@ class PDFManager:
         1. Páginas de categoría: /klasse-7/deutsch/
         2. Páginas de búsqueda: /klasse-7/deutsch/aufsatz
 
+        Estrategia: Extraer data-id de cada contenedor doc item list row
+        y construir directamente los URLs de descarga
+
         Args:
             base_url: URL base de la clase
             max_pages: Máximo de páginas a procesar
@@ -207,36 +210,27 @@ class PDFManager:
 
             for container in doc_containers:
                 try:
-                    # Buscar enlaces de descarga dentro del contenedor
-                    # Patrones: probe/117356?dl=pdf, probe/117356?dl=pdf_solution
-                    pdf_links = container.find_all('a', href=lambda x: x and '?dl=' in x)
+                    # Método: Extraer data-id del primer enlace en el contenedor
+                    # y construir directamente las URLs de descarga
 
-                    for link in pdf_links:
-                        href = link.get('href', '')
+                    # Buscar el primer enlace con data-id (el preview)
+                    first_link = container.find('a', {'data-id': True})
+                    if not first_link:
+                        logger.warning(f"No se encontró data-id en contenedor")
+                        continue
 
-                        # Extraer ID del documento y tipo
-                        # Ejemplo: "probe/117356?dl=pdf" -> ID=117356, type=pdf
-                        # Ejemplo: "probe/117356?dl=pdf_solution" -> ID=117356, type=solution
+                    doc_id = first_link.get('data-id')
+                    if not doc_id:
+                        continue
 
-                        if '?dl=' not in href:
-                            continue
+                    # Crear PDFs para examen y solución
+                    pdf_types = [
+                        {'name': doc_id, 'is_solution': False, 'dl_param': 'pdf'},
+                        {'name': f"{doc_id}_solution", 'is_solution': True, 'dl_param': 'pdf_solution'}
+                    ]
 
-                        # Parsear href: "probe/117356?dl=pdf" o "probe/117356?dl=pdf_solution"
-                        parts = href.split('?dl=')
-                        if len(parts) != 2:
-                            continue
-
-                        path_part = parts[0]  # "probe/117356"
-                        dl_type = parts[1]   # "pdf" o "pdf_solution"
-
-                        # Extraer ID
-                        doc_id = path_part.split('/')[-1]  # "117356"
-
-                        # Crear nombre del archivo
-                        if 'solution' in dl_type:
-                            pdf_name = f"{doc_id}_solution"
-                        else:
-                            pdf_name = doc_id
+                    for pdf_info in pdf_types:
+                        pdf_name = pdf_info['name']
 
                         # Evitar duplicados
                         if pdf_name in found_docs:
@@ -244,14 +238,15 @@ class PDFManager:
 
                         found_docs.add(pdf_name)
 
-                        # Obtener URL absoluta
+                        # Construir URL de descarga
+                        href = f"probe/{doc_id}?dl={pdf_info['dl_param']}"
                         full_url = urljoin("https://www.catlux.de/", href)
 
                         pdfs.append({
                             'name': pdf_name,
                             'url': href,
                             'full_url': full_url,
-                            'is_solution': 'solution' in dl_type,
+                            'is_solution': pdf_info['is_solution'],
                             'text': container.get_text(strip=True)[:100]
                         })
 
