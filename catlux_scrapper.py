@@ -314,20 +314,48 @@ def login_to_catlux(session: requests.Session, username: str, password: str,
         login_page_req.raise_for_status()
 
         soup_login = BeautifulSoup(login_page_req.content, 'html.parser')
-        token_input = soup_login.find('input', {'name': 'REQUEST_TOKEN'})
 
-        if not token_input:
-            logger.error("No se encontró token de login")
+        # Buscar el formulario de login (el que tiene username y password)
+        login_form = None
+        for form in soup_login.find_all('form'):
+            if form.find('input', {'name': 'username'}) and form.find('input', {'name': 'password'}):
+                login_form = form
+                break
+
+        if not login_form:
+            logger.error("No se encontró formulario de login")
             return False
 
-        request_token = token_input['value']
+        # Obtener el ID del formulario (es el FORM_SUBMIT value)
+        form_submit_value = login_form.get('id', 'tl_login')
 
+        # Obtener el REQUEST_TOKEN del formulario
+        token_input = login_form.find('input', {'name': 'REQUEST_TOKEN'})
+        if not token_input:
+            logger.error("No se encontró REQUEST_TOKEN")
+            return False
+
+        request_token = token_input.get('value', '')
+
+        # Obtener otros campos ocultos
+        target_path = ''
+        target_path_input = login_form.find('input', {'name': '_target_path'})
+        if target_path_input:
+            target_path = target_path_input.get('value', '')
+
+        # Construir payload
         payload = {
-            'FORM_SUBMIT': 'tl_login',
+            'FORM_SUBMIT': form_submit_value,
             'REQUEST_TOKEN': request_token,
             'username': username,
             'password': password
         }
+
+        if target_path:
+            payload['_target_path'] = target_path
+            payload['_always_use_target_path'] = '0'
+
+        logger.info(f"Login: usando FORM_SUBMIT={form_submit_value}")
 
         login_req = session.post(LOGIN_URL, data=payload, **kwargs)
         login_req.raise_for_status()
