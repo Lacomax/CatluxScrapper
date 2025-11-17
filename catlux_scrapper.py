@@ -670,19 +670,10 @@ def download_filtered_pdfs(base_url: str, max_pages: int = 10,
             pdf_name = pdf['name']
             pdf_save_path = full_save_path / (pdf_name + ".pdf")
 
-            # Si es solución, solo descargar si el examen NO existe aún
-            if pdf['is_solution']:
-                exam_name = pdf_name.replace("_solution", "")
-                exam_path = full_save_path / (exam_name + ".pdf")
-
-                if exam_path.exists():
-                    logger.info(f"✓ {pdf_name}.pdf - examen ya existe, saltando solución")
-                    continue
-            else:
-                # Es examen, descargar solo si no existe
-                if pdf_save_path.exists():
-                    logger.info(f"✓ {pdf_name}.pdf - ya existe")
-                    continue
+            # Si ya existe localmente, saltarlo (para cualquier tipo de PDF)
+            if pdf_save_path.exists():
+                logger.info(f"✓ {pdf_name}.pdf - ya existe")
+                continue
 
             # Descargar
             try:
