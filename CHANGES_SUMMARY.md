@@ -7,6 +7,11 @@ El usuario solicitó mejorar el script para:
 2. ✅ Descargar todos o solo algunos específicos
 3. ✅ Verificar si el PDF ya está descargado antes de bajarlo
 4. ✅ Mostrar el estado de descarga (descargado/nuevo) en el listado
+5. ✅ Ordenar resultados por REF (#3426, #3425, etc.)
+6. ✅ Tratar examen y solución como documentos independientes
+7. ✅ Indicar en tabla si es ejercicio o solución
+8. ✅ Mostrar más caracteres del título (hasta 75)
+9. ✅ Descargar soluciones automáticamente con los exámenes
 
 ## ✨ Cambios Implementados
 
@@ -33,57 +38,96 @@ ask_download_selection() → (pregunta qué descargar)
 download_filtered_pdfs(pdfs, selected_indices) → (descarga solo seleccionados)
 ```
 
-### 2. **Detección de Archivos Locales**
-**Archivo:** `catlux_scrapper.py:mark_local_files()` y `print_preview()`
+### 2. **Documentos Independientes, Ordenados por REF**
+**Archivo:** `catlux_scrapper.py:print_preview()` (+60 líneas)
 
-**Características:**
-- Función `mark_local_files()` escanea la carpeta local
-- Marca cada PDF con `is_local: True/False`
-- En el preview muestra:
-  - `D` = PDF ya descargado (existe localmente)
-  - ` ` (espacio) = PDF nuevo (no existe)
+**Cambios principales:**
+- **Mostrar por separado**: Cada examen y solución es una fila independiente
+- **Ordenado por REF**: PDFs se ordenan por número de referencia (#0272, #0309, #0463, etc.)
+- **Columna TIPO**: Indica si es "Exam" o "Solution"
+- **Títulos más largos**: Expandido a 75 caracteres (antes 48)
 
-**Ejemplo de Preview:**
+**Ejemplo de Preview (Nueva Estructura):**
 ```
-#  | EST | LOC | ID     | Ref     | Tipo              | Título
----+-----+-----+--------+---------+-------------------+---
-1  | ✓   | D   | 119215 | #3426   | Schulaufgabe      | Test 1
-2  | ✓   | D   | 118065 | #3425   | Aufsatz           | Test 2
-3  | ✓   |     | 117356 | #3424   | Schulaufgabe      | Test 3
+#   | LOC | TIPO     | ID     | REF      | Categoría                       | Título
+----|-----|----------|--------|----------|----------------------------------|---
+  1 |     | Exam     | 112399 | #0309    | 0. Schulaufgabe, Aufsatz        | begründete Stellungnahme
+  2 |     | Solution | 112399 | #0309    | 0. Schulaufgabe, Aufsatz        | begründete Stellungnahme
+  3 |     | Exam     | 112780 | #0272    | 1. Schulaufgabe, Aufsatz        | Erlebnisschilderung
+  4 |     | Solution | 112780 | #0272    | 1. Schulaufgabe, Aufsatz        | Erlebnisschilderung
 ```
 
-### 3. **Opciones de Selección Interactiva**
+**Ventajas:**
+- Lista más clara y legible
+- Documentos ordenados lógicamente por referencia
+- Tipo claramente visible (Exam vs Solution)
+- Más contexto en títulos (75 vs 48 caracteres)
+
+### 3. **Descarga Automática de Soluciones**
+**Archivo:** `catlux_scrapper.py:download_filtered_pdfs()` (+80 líneas)
+
+**Característica nueva:**
+- Cuando se descarga un examen, **automáticamente se descarga su solución**
+- El script busca en la lista y descarga el par (exam + solution)
+- El usuario NO necesita seleccionar manualmente cada solución
+
+**Comportamiento:**
+```
+Usuario selecciona: 1, 3, 5 (exámenes)
+    ↓
+Script procesa 1 (examen 112399):
+  ⬇ 112399.pdf - descargado
+  ⬇ 112399_solution.pdf - descargado (automáticamente)
+    ↓
+Script procesa 3 (examen 112780):
+  ⬇ 112780.pdf - descargado
+  ⬇ 112780_solution.pdf - descargado (automáticamente)
+```
+
+**Conteo inteligente:**
+- Cada par (exam + solution) = 2 descargas hacia el límite mensual
+- Seleccionar 5 exámenes ≈ 10 descargas contadas
+- El script es honesto con el contador de CatLux (100/mes)
+
+**Ventaja:**
+- Usuario solo selecciona exámenes
+- Script automáticamente obtiene soluciones
+- Descarga más rápida y eficiente
+
+### 4. **Opciones de Selección Interactiva**
 **Archivo:** `catlux_scrapper.py:ask_download_selection()`
 
 **Opciones disponibles:**
-1. **`all`** - Descargar TODOS los PDFs nuevos
+1. **`all`** - Descargar TODOS los PDFs nuevos (exámenes + soluciones automáticamente)
 2. **`none`** - No descargar nada (cancela)
-3. **`new`** - Descargar solo los que NO están locales
-4. **Números** - `1,3,5` para descargar específicos
+3. **`new`** - Descargar solo los que NO están locales (exámenes + soluciones)
+4. **Números** - `1,3,5` para descargar específicos (exámenes; soluciones automáticas)
 
 **Ejemplo:**
 ```
 Selección: new
 → Descarga solo PDFs que no existen en /ruta/klasse-7/deutsch/
+→ Automáticamente incluye soluciones de los exámenes seleccionados
 ```
 
-### 4. **Documentación Completa**
+### 5. **Documentación Completa**
 **Archivos:**
-- `WORKFLOW.md` - Guía detallada del flujo completo
+- `WORKFLOW.md` - Guía detallada del flujo completo y casos de uso
   - Explicación de cada paso
   - Interpretación de símbolos en el preview
   - Casos de uso comunes
   - Resolución de problemas
   - Guía de seguridad
 
-### 5. **Tests Automatizados**
-**Archivo:** `test_integration.py`
+### 6. **Tests Automatizados (Actualizados)**
+**Archivo:** `test_integration.py` (+40 líneas)
 
 **Tests incluidos:**
-1. ✅ `mark_local_files()` detecta archivos correctamente
-2. ✅ Agrupación de PDFs en preview
-3. ✅ Lógica de índices seleccionados
-4. ✅ Tracker de descargas mensuales
+1. ✅ `mark_local_files()` detecta archivos locales correctamente
+2. ✅ **Ordenamiento por REF** - PDFs se ordenan ascendentemente por #
+3. ✅ **Documentos independientes** - Examen y solución como items separados
+4. ✅ **Descarga automática de soluciones** - Simula selección e descarga automática
+5. ✅ Tracker de descargas mensuales
 
 **Ejecución:**
 ```bash
@@ -93,24 +137,26 @@ python3 test_integration.py
 **Resultado:**
 ```
 ✓ TEST 1 PASADO: mark_local_files() funciona correctamente
-✓ TEST 2 PASADO: Agrupación funciona correctamente
-✓ TEST 3 PASADO: Lógica de índices funciona correctamente
+✓ TEST 2 PASADO: Ordenamiento por REF funciona correctamente
+✓ TEST 3 PASADO: Documentos independientes y descarga automática funcionan
 ✓ TEST 4 PASADO: Tracker registra correctamente
 ✓ TODOS LOS TESTS PASARON
 ```
 
-## 🔄 Flujo de Trabajo Actual
+## 🔄 Flujo de Trabajo Actual (Mejorado)
 
 ```
 1. Usuario ejecuta: python catlux_scrapper.py --url "..."
 2. Script hace login automáticamente
 3. Obtiene lista de PDFs disponibles
-4. Marca archivos que ya existen localmente
-5. Muestra PREVIEW con estado (✓ descargado, ☐ nuevo)
-6. PREGUNTA interactivamente qué descargar
-7. Usuario selecciona (all, none, new, o números específicos)
-8. DESCARGA solo los seleccionados
-9. Muestra resumen final y saldo disponible
+4. ORDENA por REF (#0272, #0309, etc.) ascendentemente
+5. Marca archivos que ya existen localmente
+6. Muestra PREVIEW (documentos independientes: examen en 1, solución en 2, etc.)
+7. PREGUNTA interactivamente qué descargar
+8. Usuario selecciona (all, none, new, o números específicos)
+9. DESCARGA exámenes seleccionados
+10. AUTOMÁTICAMENTE descarga soluciones de los exámenes
+11. Muestra resumen final y saldo disponible (contando pares exam+solution)
 ```
 
 ## 📊 Ejemplo Práctico
@@ -120,28 +166,41 @@ python3 test_integration.py
 python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7/deutsch/"
 ```
 
-### Salida Paso 1 - Preview:
+### Salida Paso 1 - Preview (Nuevo Formato):
 ```
-======================================================================
+================================================================================
 📋 PREVIEW DE PDFS ENCONTRADOS
-======================================================================
+================================================================================
 
-📚 Clase: KLASSE-7
-📖 Asignatura: DEUTSCH
+📚 Clase: DEUTSCH
+📖 Asignatura: AUFSATZ
 
-✓ 28 PDFs encontrados
-  - Exámenes: 14
-  - Soluciones: 14
-  - Ya descargados: 2
-  - Nuevos: 26
+✓ 48 PDFs encontrados
+  - Exámenes: 24
+  - Soluciones: 24
+  - Ya descargados: 1
+  - Nuevos: 47
 
-#  | EST | LOC | ID     | Ref   | Tipo              | Título
-...
-1  | ✓   | D   | 119215 | #3426 | Schulaufgabe      | Deutsch Test 1
-2  | ✓   | D   | 118065 | #3425 | Aufsatz           | Deutsch Test 2
-3  | ✓   |     | 117356 | #3424 | Schulaufgabe      | Deutsch Test 3
-...
+#   | LOC | TIPO     | ID     | REF      | Categoría                       | Título
+----|-----|----------|--------|----------|----------------------------------|---
+  1 |     | Exam     | 112399 | #0309    | 0. Schulaufgabe, Aufsatz        | begründete Stellungnahme
+  2 |     | Solution | 112399 | #0309    | 0. Schulaufgabe, Aufsatz        | begründete Stellungnahme
+  3 |     | Exam     | 112780 | #0272    | 1. Schulaufgabe, Aufsatz        | Erlebnisschilderung
+  4 |     | Solution | 112780 | #0272    | 1. Schulaufgabe, Aufsatz        | Erlebnisschilderung
+  ...
+ 47 | ✓   | Exam     | 113132 | #0463    | 4. Schulaufgabe, Aufsatz        | begründete Stellungnahme
+ 48 |     | Solution | 113132 | #0463    | 4. Schulaufgabe, Aufsatz        | begründete Stellungnahme
+================================================================================
+Total: 48 PDFs (24 exámenes + 24 soluciones)
+Leyenda: LOC=Local (✓=descargado), TIPO=Exam/Solution, REF=Ordenado ascendente
+================================================================================
 ```
+
+**Notar:**
+- Documentos ordenados por REF (#0272, #0309, #0463)
+- Examen y solución aparecen juntos (filas 1-2, 3-4, etc.)
+- Columna TIPO indica claramente Exam o Solution
+- Títulos extendidos (75 caracteres)
 
 ### Paso 2 - Selección:
 ```
@@ -156,13 +215,14 @@ Opciones:
 Selección: new
 ```
 
-### Paso 3 - Descargas:
+### Paso 3 - Descargas (Automáticas):
 ```
 🔄 Iniciando descargas...
 
-⬇ 117356.pdf - descargado (52 restantes)
-⬇ 117357.pdf - descargado (51 restantes)
-⬇ 117357_solution.pdf - descargado (50 restantes)
+⬇ 112399.pdf - descargado (98 restantes)
+⬇ 112399_solution.pdf - descargado (97 restantes)
+⬇ 112780.pdf - descargado (96 restantes)
+⬇ 112780_solution.pdf - descargado (95 restantes)
 ...
 Descarga completada: 26 nuevos PDFs
 ```
