@@ -70,13 +70,59 @@ CATLUX_SAVE_PATH=/home/tuUsuario/Documentos/Catlux
 
 ## 📖 Uso
 
-### Descargar desde una clase
+### 1️⃣ PASO 1: Ver preview de PDFs (RECOMENDADO)
+
+Antes de descargar, ve qué PDFs encontró el script:
 
 ```bash
-python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7/deutsch/"
+python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7/deutsch/" --preview
 ```
 
-### Ver estado de descargas (sin descargar)
+Salida:
+```
+======================================================================
+📋 PREVIEW DE PDFS ENCONTRADOS
+======================================================================
+
+📚 Clase: KLASSE-7
+📖 Asignatura: DEUTSCH
+
+✓ 28 PDFs encontrados
+  - Exámenes: 14
+  - Soluciones: 14
+
+----------------------------------------------------------------------
+Archivos encontrados:
+----------------------------------------------------------------------
+  1. [✓] 119215 (solución)
+  2. [✓] 118065 (solución)
+  3. [✓] 112650 (solución)
+  4. [⊘] 113649 (sin solución)
+  ...
+----------------------------------------------------------------------
+Total: 28 PDFs
+======================================================================
+```
+
+**Símbolos:**
+- `[✓]` = Tiene examen Y solución
+- `[⊘]` = Solo examen (sin solución)
+
+### 2️⃣ PASO 2: Descargar PDFs
+
+Después de verificar el preview, descarga:
+
+```bash
+python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7/deutsch/" --download
+```
+
+El script:
+1. Muestra el preview nuevamente
+2. Descarga solo PDFs nuevos (evita duplicados)
+3. Solo descarga soluciones si el examen existe
+4. Muestra el saldo después de descargar
+
+### 3️⃣ PASO 3: Ver estado de descargas
 
 ```bash
 python catlux_scrapper.py --info
@@ -95,24 +141,53 @@ Total histórico: 247
 ============================================================
 ```
 
-### Opciones
-
-- `--url URL`: URL base de la clase a descargar
-- `--pages N`: Número máximo de páginas a procesar (default: 10)
-- `--info`: Mostrar estado sin descargar
-- `--reset-tracker`: ⚠️ Borrar historial de descargas
-
-Ejemplos:
+### 4️⃣ PASO 4: Ver últimas descargas realizadas
 
 ```bash
-# Descargar 20 páginas
-python catlux_scrapper.py --url "..." --pages 20
+python catlux_scrapper.py --latest
+```
 
-# Ver saldo
+Salida:
+```
+============================================================
+📥 ÚLTIMAS DESCARGAS (máximo 20)
+============================================================
+ 1. [2024-11-17] 119215.pdf
+ 2. [2024-11-17] 119215_solution.pdf
+ 3. [2024-11-17] 118065.pdf
+ 4. [2024-11-17] 118065_solution.pdf
+...
+============================================================
+```
+
+### Opciones
+
+- `--url URL`: URL base de la clase a procesar
+- `--pages N`: Número máximo de páginas (default: 10)
+- `--preview`: Mostrar preview SIN descargar
+- `--download`: Descargar después de preview
+- `--info`: Ver estado de descargas este mes
+- `--latest`: Ver últimas 20 descargas realizadas
+- `--reset-tracker`: ⚠️ Borrar historial (CUIDADO)
+
+### Flujo recomendado
+
+```bash
+# 1. Ver saldo disponible
 python catlux_scrapper.py --info
 
-# Borrar historial (CUIDADO)
-python catlux_scrapper.py --reset-tracker
+# 2. Ver qué PDFs hay en Deutsch
+python catlux_scrapper.py --url "...klasse-7/deutsch/" --preview
+
+# 3. Si todo está bien, descargar
+python catlux_scrapper.py --url "...klasse-7/deutsch/" --download
+
+# 4. Ver saldo después de descargar
+python catlux_scrapper.py --info
+
+# 5. Repetir para otras asignaturas
+python catlux_scrapper.py --url "...klasse-7/mathematik/" --preview
+python catlux_scrapper.py --url "...klasse-7/mathematik/" --download
 ```
 
 ## 📁 Estructura de carpetas
