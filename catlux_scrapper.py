@@ -210,10 +210,7 @@ class PDFManager:
 
             for container in doc_containers:
                 try:
-                    # Método: Extraer data-id del primer enlace en el contenedor
-                    # y construir directamente las URLs de descarga
-
-                    # Buscar el primer enlace con data-id (el preview)
+                    # Extraer información del contenedor
                     first_link = container.find('a', {'data-id': True})
                     if not first_link:
                         logger.warning(f"No se encontró data-id en contenedor")
@@ -222,6 +219,19 @@ class PDFManager:
                     doc_id = first_link.get('data-id')
                     if not doc_id:
                         continue
+
+                    # Extraer metadatos del contenedor
+                    # Tipo/Categoría: buscar el label con clase "label label-default pull-right"
+                    label_elem = container.find('span', class_=lambda x: x and 'label' in str(x) and 'label-default' in str(x))
+                    doc_type = label_elem.get_text(strip=True) if label_elem else "Documento"
+
+                    # ID real del documento (el número con #)
+                    id_elem = container.find('span', class_=lambda x: x and 'text-muted' in str(x))
+                    doc_number = id_elem.get_text(strip=True) if id_elem else f"#{doc_id}"
+
+                    # Título del documento
+                    title_elem = container.find('h2')
+                    doc_title = title_elem.get_text(strip=True) if title_elem else ""
 
                     # Crear PDFs para examen y solución
                     pdf_types = [
@@ -247,6 +257,10 @@ class PDFManager:
                             'url': href,
                             'full_url': full_url,
                             'is_solution': pdf_info['is_solution'],
+                            'doc_id': doc_id,
+                            'doc_number': doc_number,
+                            'doc_type': doc_type,
+                            'doc_title': doc_title,
                             'text': container.get_text(strip=True)[:100]
                         })
 
@@ -287,9 +301,9 @@ class PDFManager:
             pdfs: Lista de PDFs
             base_url: URL base para contexto
         """
-        print("\n" + "=" * 100)
+        print("\n" + "=" * 130)
         print("📋 PREVIEW DE PDFS ENCONTRADOS")
-        print("=" * 100)
+        print("=" * 130)
 
         url_parts = base_url.rstrip('/').split('/')
         subject = url_parts[-1]
@@ -301,16 +315,22 @@ class PDFManager:
         print(f"  - Exámenes: {sum(1 for p in pdfs if not p['is_solution'])}")
         print(f"  - Soluciones: {sum(1 for p in pdfs if p['is_solution'])}\n")
 
-        print("-" * 100)
-        print("Archivos encontrados:")
-        print("-" * 100)
+        print("-" * 130)
+        print(f"{'#':3} | {'EST':3} | {'ID':6} | {'Ref':6} | {'Tipo':30} | {'Título':50}")
+        print("-" * 130)
 
         # Agrupar PDFs por ID para mostrar examen y solución juntos
         grouped_by_id = {}
         for pdf in pdfs:
             pdf_id = pdf['name'].replace('_solution', '')
             if pdf_id not in grouped_by_id:
-                grouped_by_id[pdf_id] = {'exam': None, 'solution': None, 'text': pdf['text']}
+                grouped_by_id[pdf_id] = {
+                    'exam': None,
+                    'solution': None,
+                    'doc_number': pdf.get('doc_number', ''),
+                    'doc_type': pdf.get('doc_type', ''),
+                    'doc_title': pdf.get('doc_title', '')
+                }
 
             if pdf['is_solution']:
                 grouped_by_id[pdf_id]['solution'] = pdf
@@ -321,14 +341,17 @@ class PDFManager:
             has_both = items['exam'] and items['solution']
             status = "✓" if has_both else "⊘"
 
-            # Truncar el texto para que quepa en la línea
-            text_display = items['text'][:60] if items['text'] else ""
+            # Truncar datos para que quepan en columnas
+            doc_type_display = items['doc_type'][:28] if items['doc_type'] else "Documento"
+            doc_title_display = items['doc_title'][:48] if items['doc_title'] else "Sin título"
+            doc_number = items['doc_number'] if items['doc_number'] else f"#{pdf_id}"
 
-            print(f"{i:3}. [{status}] ID: {pdf_id:6} - {text_display}")
+            print(f"{i:3} | {status:3} | {pdf_id:6} | {doc_number:6} | {doc_type_display:30} | {doc_title_display:50}")
 
-        print("-" * 100)
+        print("-" * 130)
         print(f"Total: {len(pdfs)} PDFs ({sum(1 for p in pdfs if not p['is_solution'])} exámenes + {sum(1 for p in pdfs if p['is_solution'])} soluciones)")
-        print("=" * 100 + "\n")
+        print("Leyenda: EST=Estado (✓=par completo, ⊘=solo uno), ID=ID de descarga, Ref=Ref# en CatLux")
+        print("=" * 130 + "\n")
 
 
 # ============================================================================
