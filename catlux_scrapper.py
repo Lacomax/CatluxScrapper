@@ -645,12 +645,14 @@ def select_category_interactive() -> Optional[str]:
         '2': 'englisch',
         '3': 'mathematik',
         '4': 'latein',
-        '5': 'französisch',
+        '5': 'franzoesisch',
         '6': 'geschichte',
-        '7': 'erdkunde',
+        '7': 'erdkunde-geographie',
         '8': 'biologie',
         '9': 'chemie',
         '10': 'physik',
+        '11': 'natur-und-technik',
+        '12': 'sonstiges',
     }
 
     # Tipos de documentos

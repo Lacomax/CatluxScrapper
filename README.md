@@ -89,7 +89,7 @@ python catlux_scrapper.py --select-category
 
 El script te pedirá:
 1. **Klasse** (5-12)
-2. **Asignatura** (Deutsch, Englisch, Mathematik, etc.)
+2. **Asignatura** (Deutsch, Englisch, Mathematik, Français, Erdkunde-Geographie, Biologie, Chemie, Physik, Natur-und-Technik, Sonstiges, etc.)
 3. **Tipo de Documento** (Aufsatz, Schulaufgabe, Extemporale, etc.)
 
 Luego mostrará preview y preguntará qué descargar.
@@ -417,6 +417,12 @@ python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7
 
 # 7ª Klasse - Englisch
 python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7/englisch/"
+
+# 7ª Klasse - Franzoesisch (nota: sin acentos)
+python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7/franzoesisch/"
+
+# 7ª Klasse - Erdkunde-Geographie
+python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7/erdkunde-geographie/"
 
 # 5ª Klasse - Deutsch
 python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-5/deutsch/"
