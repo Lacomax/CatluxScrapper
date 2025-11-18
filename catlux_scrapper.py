@@ -363,17 +363,40 @@ class PDFManager:
 # FUNCIONES DE UTILIDAD
 # ============================================================================
 
-def mark_local_files(pdfs: List[Dict], save_path: Path) -> None:
+def mark_local_files(pdfs: List[Dict], save_path: Path, search_all_subfolders: bool = True) -> None:
     """
     Marca cuáles PDFs ya existen localmente.
 
+    Busca en:
+    - La carpeta específica (save_path)
+    - Si search_all_subfolders=True, busca recursivamente en todas las subcarpetas
+
+    Esto permite detectar PDFs descargados en otro lugar o manualmente.
+
     Args:
         pdfs: Lista de PDFs a marcar
-        save_path: Ruta donde buscar los archivos
+        save_path: Ruta donde buscar los archivos (punto de partida)
+        search_all_subfolders: Si True, busca recursivamente en todas las subcarpetas
     """
     for pdf in pdfs:
         pdf_file = save_path / (pdf['name'] + '.pdf')
-        pdf['is_local'] = pdf_file.exists()
+
+        # Primero buscar en la carpeta específica
+        if pdf_file.exists():
+            pdf['is_local'] = True
+            continue
+
+        # Si no encontró y search_all_subfolders=True, buscar en todas las subcarpetas
+        if search_all_subfolders and save_path.parent.exists():
+            # Buscar en TODAS las subcarpetas bajo CATLUX_SAVE_PATH
+            # Ej: C:\Users\xavie\Documents\catlux\
+            root_path = save_path.parent.parent  # Sube 2 niveles: klasse-7/deutsch/ -> catlux/
+
+            # Buscar recursivamente
+            for found_file in root_path.rglob(f"{pdf['name']}.pdf"):
+                pdf['is_local'] = True
+                logger.info(f"Detectado en otra carpeta: {found_file.relative_to(root_path)}")
+                break
 
 
 def ask_download_selection(pdfs: List[Dict]) -> List[int]:
@@ -526,6 +549,109 @@ def login_to_catlux(session: requests.Session, username: str, password: str,
 # ============================================================================
 # FUNCIONES DE DESCARGA Y PREVIEW
 # ============================================================================
+
+def select_category_interactive() -> Optional[str]:
+    """
+    Permite al usuario seleccionar la categoría interactivamente.
+    Construye la URL: https://www.catlux.de/proben/gymnasium/klasse-X/asignatura/tipo
+
+    Returns:
+        URL construida o None si el usuario cancela
+    """
+    base_url = "https://www.catlux.de/proben/gymnasium"
+
+    # Klassen disponibles
+    klassen = {
+        '1': 'klasse-5',
+        '2': 'klasse-6',
+        '3': 'klasse-7',
+        '4': 'klasse-8',
+        '5': 'klasse-9',
+        '6': 'klasse-10',
+        '7': 'klasse-11',
+        '8': 'klasse-12',
+    }
+
+    # Asignaturas disponibles
+    subjects = {
+        '1': 'deutsch',
+        '2': 'englisch',
+        '3': 'mathematik',
+        '4': 'latein',
+        '5': 'französisch',
+        '6': 'geschichte',
+        '7': 'erdkunde',
+        '8': 'biologie',
+        '9': 'chemie',
+        '10': 'physik',
+    }
+
+    # Tipos de documentos
+    doc_types = {
+        '1': 'aufsatz',
+        '2': 'schulaufgabe',
+        '3': 'extemporale',
+        '4': 'kurzarbeit',
+        '5': 'arbeitsblatt',
+        '6': 'grammatik',
+    }
+
+    print("\n" + "=" * 80)
+    print("📚 SELECCIONAR CATEGORÍA")
+    print("=" * 80)
+
+    # Seleccionar Klasse
+    print("\n📍 Selecciona Klasse:")
+    for key, value in klassen.items():
+        print(f"  {key}. {value}")
+    while True:
+        klasse_choice = input("\nSelección: ").strip()
+        if klasse_choice in klassen:
+            selected_klasse = klassen[klasse_choice]
+            print(f"✓ Klasse seleccionada: {selected_klasse}")
+            break
+        else:
+            print("❌ Opción inválida")
+
+    # Seleccionar Asignatura
+    print("\n📍 Selecciona Asignatura:")
+    for key, value in subjects.items():
+        print(f"  {key}. {value}")
+    while True:
+        subject_choice = input("\nSelección: ").strip()
+        if subject_choice in subjects:
+            selected_subject = subjects[subject_choice]
+            print(f"✓ Asignatura seleccionada: {selected_subject}")
+            break
+        else:
+            print("❌ Opción inválida")
+
+    # Seleccionar Tipo de Documento
+    print("\n📍 Selecciona Tipo de Documento:")
+    for key, value in doc_types.items():
+        print(f"  {key}. {value}")
+    print("  0. (Ninguno - ver todo)")
+    while True:
+        type_choice = input("\nSelección: ").strip()
+        if type_choice == '0':
+            # Sin filtro de tipo, solo klasse/subject
+            url = f"{base_url}/{selected_klasse}/{selected_subject}/"
+            print(f"✓ Tipo: sin filtro (verás todos)")
+            break
+        elif type_choice in doc_types:
+            selected_type = doc_types[type_choice]
+            url = f"{base_url}/{selected_klasse}/{selected_subject}/{selected_type}"
+            print(f"✓ Tipo seleccionado: {selected_type}")
+            break
+        else:
+            print("❌ Opción inválida")
+
+    print("\n" + "=" * 80)
+    print(f"📌 URL: {url}")
+    print("=" * 80 + "\n")
+
+    return url
+
 
 def preview_pdfs(base_url: str, max_pages: int = 10) -> Tuple[List[Dict], List[int]]:
     """
@@ -802,6 +928,11 @@ def main():
         action="store_true",
         help="⚠️  ADVERTENCIA: Borra el historial de descargas"
     )
+    parser.add_argument(
+        "--select-category",
+        action="store_true",
+        help="Seleccionar categoría interactivamente (Klasse, Asignatura, Tipo)"
+    )
 
     args = parser.parse_args()
     tracker = DownloadTracker(TRACKER_FILE)
@@ -828,12 +959,17 @@ def main():
     # Obtener URL
     url = args.url
     if not url:
-        url = os.getenv("CATLUX_DEFAULT_URL", "").strip()
-        if not url:
-            print("Uso: python catlux_scrapper.py --url 'https://www.catlux.de/proben/...'")
-            print("      python catlux_scrapper.py --preview --url '...'")
-            print("      python catlux_scrapper.py --info")
-            return 1
+        if args.select_category:
+            # Selección interactiva de categoría
+            url = select_category_interactive()
+        else:
+            url = os.getenv("CATLUX_DEFAULT_URL", "").strip()
+
+    if not url:
+        print("Uso: python catlux_scrapper.py --url 'https://www.catlux.de/proben/...'")
+        print("      python catlux_scrapper.py --select-category  # Selección interactiva")
+        print("      python catlux_scrapper.py --info")
+        return 1
 
     # Preview (siempre interactivo - pregunta qué descargar)
     logger.info(f"Iniciando preview desde: {url}")
