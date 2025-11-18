@@ -454,11 +454,12 @@ def ask_download_selection(pdfs: List[Dict]) -> Optional[List[int]]:
     print("\n" + "=" * 80)
     print("📥 SELECCIONAR PDFS PARA DESCARGAR")
     print("=" * 80)
-    print("\nOpciones:")
-    print("  0. Descargar TODOS los nuevos")
-    print("  1. NO descargar nada")
-    print("  2. Descargar solo los NUEVOS (no los ya descargados)")
-    print("  3. Seleccionar números específicos (ej: 1,3,5)")
+    print("\nOpciones de descarga:")
+    print("  0. Descargar TODOS (incluyendo archivos ya descargados)")
+    print("  1. Descargar solo NUEVOS (archivos que no existen aún)")
+    print("  2. Seleccionar números específicos (ej: 1,3,5)")
+    print("\nOpciones de navegación:")
+    print("  8. NO descargar nada (salir)")
     print("  9. Volver atrás (seleccionar otras categorías)")
     print("\n" + "=" * 80)
 
@@ -467,17 +468,15 @@ def ask_download_selection(pdfs: List[Dict]) -> Optional[List[int]]:
             user_input = input("\nSelección: ").strip().lower()
 
             if user_input == '0':
+                # Descargar todos (incluso los que ya existen)
                 return list(range(len(pdfs)))
 
             elif user_input == '1':
-                return []
-
-            elif user_input == '2':
-                # Solo nuevos
+                # Solo nuevos (que no existen localmente)
                 new_indices = [i for i, pdf in enumerate(pdfs) if not pdf.get('is_local', False)]
                 return new_indices
 
-            elif user_input == '3':
+            elif user_input == '2':
                 # Seleccionar números específicos
                 numbers_input = input("Escribe números (ej: 1,3,5): ").strip()
                 indices = [int(x.strip()) - 1 for x in numbers_input.split(',')]
@@ -487,11 +486,16 @@ def ask_download_selection(pdfs: List[Dict]) -> Optional[List[int]]:
                     print(f"❌ Números inválidos. Rango válido: 1-{len(pdfs)}")
                     continue
 
+            elif user_input == '8':
+                # No descargar nada (salir)
+                return []
+
             elif user_input == '9':
+                # Volver atrás (si es posible)
                 return None  # Señal para volver atrás
 
             else:
-                print("❌ Opción inválida. Usa 0, 1, 2, 3, o 9")
+                print("❌ Opción inválida. Usa 0, 1, 2, 8, o 9")
                 continue
 
         except (ValueError, IndexError):

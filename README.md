@@ -188,11 +188,13 @@ El script preguntará interactivamente:
 📥 SELECCIONAR PDFS PARA DESCARGAR
 ================================================================================
 
-Opciones:
-  0. Descargar TODOS los nuevos
-  1. NO descargar nada
-  2. Descargar solo los NUEVOS (no los ya descargados)
-  3. Seleccionar números específicos (ej: 1,3,5)
+Opciones de descarga:
+  0. Descargar TODOS (incluyendo archivos ya descargados)
+  1. Descargar solo NUEVOS (archivos que no existen aún)
+  2. Seleccionar números específicos (ej: 1,3,5)
+
+Opciones de navegación:
+  8. NO descargar nada (salir)
   9. Volver atrás (seleccionar otras categorías)
 
 ================================================================================
@@ -202,25 +204,25 @@ Selección: _
 
 **Ejemplos de selección:**
 
-1. **Descargar todos los nuevos:**
+1. **Descargar todos (incluyendo ya descargados):**
    ```
    Selección: 0
    ```
 
-2. **No descargar nada:**
+2. **Solo los nuevos:**
    ```
    Selección: 1
    ```
 
-3. **Solo los nuevos:**
+3. **Específicos (1, 3, 5):**
    ```
    Selección: 2
+   Escribe números (ej: 1,3,5): 1,3,5
    ```
 
-4. **Específicos (1, 3, 5):**
+4. **No descargar nada (salir):**
    ```
-   Selección: 3
-   Escribe números (ej: 1,3,5): 1,3,5
+   Selección: 8
    ```
 
 5. **Volver atrás para otra categoría:**

@@ -283,11 +283,13 @@ Muestra todos los PDFs encontrados con:
 📥 SELECCIONAR PDFS PARA DESCARGAR
 ================================================================================
 
-Opciones:
-  0. Descargar TODOS los nuevos
-  1. NO descargar nada
-  2. Descargar solo los NUEVOS (no los ya descargados)
-  3. Seleccionar números específicos (ej: 1,3,5)
+Opciones de descarga:
+  0. Descargar TODOS (incluyendo archivos ya descargados)
+  1. Descargar solo NUEVOS (archivos que no existen aún)
+  2. Seleccionar números específicos (ej: 1,3,5)
+
+Opciones de navegación:
+  8. NO descargar nada (salir)
   9. Volver atrás (seleccionar otras categorías)
 
 ================================================================================
@@ -299,10 +301,10 @@ Selección: _
 
 | Opción | Qué Hace |
 |--------|----------|
-| `0` | Descarga TODOS los PDFs encontrados (incluidos los nuevos) |
-| `1` | NO descarga nada y cancela |
-| `2` | Descarga SOLO los PDFs que no existen localmente |
-| `3` | Te pide números específicos (ej: `1,5,9`) |
+| `0` | Descarga TODOS los PDFs encontrados (incluyendo los ya descargados) |
+| `1` | Descarga SOLO los PDFs que no existen localmente |
+| `2` | Te pide números específicos (ej: `1,5,9`) |
+| `8` | NO descarga nada y cancela |
 | `9` | Vuelve a `--select-category` (si la usaste) o cancela |
 
 ---
@@ -388,11 +390,11 @@ python catlux_scrapper.py -h
 
 ## Problemas Comunes
 
-**P: ¿Qué significa "Selección: 3 / Escribe números..."?**
+**P: ¿Qué significa "Selección: 2 / Escribe números..."?**
 
-R: Primero escribes `3`, luego te pide que especifiques qué números quieres:
+R: Primero escribes `2` (opción "Seleccionar números específicos"), luego te pide que especifiques qué números quieres:
 ```
-Selección: 3
+Selección: 2
 Escribe números (ej: 1,3,5): 1,5,9
 ```
 
