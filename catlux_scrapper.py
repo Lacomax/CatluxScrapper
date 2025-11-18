@@ -35,7 +35,7 @@ import sys
 import logging
 from pathlib import Path
 from datetime import datetime, date
-from urllib.parse import urljoin, urlparse, parse_qs
+from urllib.parse import urljoin
 from typing import Dict, Tuple, Optional, List
 import argparse
 from collections import defaultdict
@@ -45,9 +45,12 @@ try:
     import requests
     from bs4 import BeautifulSoup
     from dotenv import load_dotenv
+    # Desactivar advertencias de SSL (CatLux usa certificado auto-firmado)
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 except ImportError:
     print("Error: Dependencias faltantes. Ejecuta:")
-    print("  pip install requests beautifulsoup4 python-dotenv")
+    print("  pip install requests beautifulsoup4 python-dotenv urllib3")
     sys.exit(1)
 
 # ============================================================================
@@ -66,11 +69,62 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(LOG_FILE),
+        logging.FileHandler(LOG_FILE, encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# FUNCIONES UTILIDAD
+# ============================================================================
+
+def extract_ref_number(pdf: Dict) -> int:
+    """
+    Extrae el número de referencia (REF) para ordenar PDFs.
+
+    Busca patrones como #3426 en doc_number y extrae el número.
+    Si no encuentra número, retorna 999999 (para poner al final).
+
+    Args:
+        pdf: Diccionario del PDF con key 'doc_number'
+
+    Returns:
+        Número entero para ordenamiento
+    """
+    doc_number = pdf.get('doc_number', '')
+    match = re.search(r'#(\d+)', doc_number)
+    if match:
+        return int(match.group(1))
+    return 999999
+
+
+def extract_category_path(base_url: str, save_base_path: str) -> Optional[Path]:
+    """
+    Extrae clase y asignatura de la URL y construye la ruta de guardado.
+
+    Desde una URL como:
+    https://www.catlux.de/proben/gymnasium/klasse-7/deutsch/
+    Extrae: klasse-7 y deutsch, luego construye:
+    /save_base_path/klasse-7/deutsch/
+
+    Args:
+        base_url: URL base completa (ej: https://www.catlux.de/proben/gymnasium/klasse-7/deutsch/)
+        save_base_path: Ruta base de guardado (ej: /home/user/Catlux)
+
+    Returns:
+        Ruta construida (/home/user/Catlux/klasse-7/deutsch/) o None si hay error
+    """
+    try:
+        url_parts = base_url.rstrip('/').split('/')
+        subject_folder = url_parts[-1]
+        class_folder = url_parts[-2]
+        return Path(save_base_path) / class_folder / subject_folder
+    except (IndexError, ValueError) as e:
+        logger.error(f"Error parseando URL: {e}")
+        return None
+
 
 # ============================================================================
 # CLASES DE TRACKING Y GESTIÓN
@@ -167,6 +221,13 @@ class PDFManager:
         """
         Obtiene la lista de PDFs de una URL.
 
+        Soporta dos tipos de páginas:
+        1. Páginas de categoría: /klasse-7/deutsch/
+        2. Páginas de búsqueda: /klasse-7/deutsch/aufsatz
+
+        Estrategia: Extraer data-id de cada contenedor doc item list row
+        y construir directamente los URLs de descarga
+
         Args:
             base_url: URL base de la clase
             max_pages: Máximo de páginas a procesar
@@ -175,43 +236,87 @@ class PDFManager:
             Lista de diccionarios con información de PDFs
         """
         pdfs = []
+        found_docs = set()  # Para evitar duplicados
 
         for page_num in range(1, max_pages + 1):
             url = f"{base_url}?p={page_num}"
             logger.info(f"Buscando en: {url}")
 
             try:
-                response = self.session.get(url, **self.kwargs, timeout=10)
+                # Desactivar verificación SSL para CatLux
+                response = self.session.get(url, verify=False, timeout=10)
                 response.raise_for_status()
             except Exception as e:
                 logger.error(f"Error descargando página {page_num}: {e}")
                 break
 
             soup = BeautifulSoup(response.content, "html.parser")
-            pdf_links = soup.select('a[href*="pdf"]')
 
-            if not pdf_links:
-                logger.info(f"No hay PDFs en página {page_num}")
+            # Buscar contenedores de documentos (div con clase "doc item list row")
+            doc_containers = soup.find_all('div', class_=lambda x: x and 'doc' in str(x) and 'item' in str(x))
+
+            if not doc_containers:
+                logger.info(f"No hay documentos en página {page_num}")
                 break
 
-            for link in pdf_links:
+            for container in doc_containers:
                 try:
-                    pdf_url = link.get('href', '')
-                    pdf_name = Path(pdf_url).name.replace("?dl=pdf", "")
+                    # Extraer información del contenedor
+                    first_link = container.find('a', {'data-id': True})
+                    if not first_link:
+                        logger.warning(f"No se encontró data-id en contenedor")
+                        continue
 
-                    # Extraer información del contexto HTML
-                    parent = link.find_parent('div', class_=lambda x: x and 'card' in x.lower())
-                    text_content = parent.get_text() if parent else link.get_text()
+                    doc_id = first_link.get('data-id')
+                    if not doc_id:
+                        continue
 
-                    pdfs.append({
-                        'name': pdf_name,
-                        'url': pdf_url,
-                        'full_url': urljoin("https://www.catlux.de/", pdf_url),
-                        'is_solution': '_solution' in pdf_name,
-                        'text': text_content.strip()
-                    })
+                    # Extraer metadatos del contenedor
+                    # Tipo/Categoría: buscar el label con clase "label label-default pull-right"
+                    label_elem = container.find('span', class_=lambda x: x and 'label' in str(x) and 'label-default' in str(x))
+                    doc_type = label_elem.get_text(strip=True) if label_elem else "Documento"
+
+                    # ID real del documento (el número con #)
+                    id_elem = container.find('span', class_=lambda x: x and 'text-muted' in str(x))
+                    doc_number = id_elem.get_text(strip=True) if id_elem else f"#{doc_id}"
+
+                    # Título del documento
+                    title_elem = container.find('h2')
+                    doc_title = title_elem.get_text(strip=True) if title_elem else ""
+
+                    # Crear PDFs para examen y solución
+                    pdf_types = [
+                        {'name': doc_id, 'is_solution': False, 'dl_param': 'pdf'},
+                        {'name': f"{doc_id}_solution", 'is_solution': True, 'dl_param': 'pdf_solution'}
+                    ]
+
+                    for pdf_info in pdf_types:
+                        pdf_name = pdf_info['name']
+
+                        # Evitar duplicados
+                        if pdf_name in found_docs:
+                            continue
+
+                        found_docs.add(pdf_name)
+
+                        # Construir URL de descarga
+                        href = f"probe/{doc_id}?dl={pdf_info['dl_param']}"
+                        full_url = urljoin("https://www.catlux.de/", href)
+
+                        pdfs.append({
+                            'name': pdf_name,
+                            'url': href,
+                            'full_url': full_url,
+                            'is_solution': pdf_info['is_solution'],
+                            'doc_id': doc_id,
+                            'doc_number': doc_number,
+                            'doc_type': doc_type,
+                            'doc_title': doc_title,
+                            'text': container.get_text(strip=True)[:100]
+                        })
+
                 except Exception as e:
-                    logger.warning(f"Error procesando enlace: {e}")
+                    logger.warning(f"Error procesando contenedor: {e}")
                     continue
 
         return pdfs
@@ -239,17 +344,19 @@ class PDFManager:
 
         return dict(grouped)
 
-    def print_preview(self, pdfs: List[Dict], base_url: str) -> None:
+    def print_preview(self, pdfs: List[Dict], base_url: str, save_path: Optional[Path] = None) -> None:
         """
-        Imprime preview de PDFs encontrados.
+        Imprime preview de PDFs encontrados con títulos, categorías y estado local.
+        Muestra cada PDF (examen y solución) como documentos independientes, ordenados por REF.
 
         Args:
             pdfs: Lista de PDFs
             base_url: URL base para contexto
+            save_path: Ruta donde se guardarían los PDFs (para mostrar estado local)
         """
-        print("\n" + "=" * 70)
+        print("\n" + "=" * 165)
         print("📋 PREVIEW DE PDFS ENCONTRADOS")
-        print("=" * 70)
+        print("=" * 165)
 
         url_parts = base_url.rstrip('/').split('/')
         subject = url_parts[-1]
@@ -257,23 +364,143 @@ class PDFManager:
         print(f"\n📚 Clase: {klasse.replace('klasse-', '').upper()}")
         print(f"📖 Asignatura: {subject.upper()}\n")
 
-        grouped = self.group_by_category(pdfs)
+        # Contar estado
+        downloaded = sum(1 for p in pdfs if p.get('is_local', False))
+        new = sum(1 for p in pdfs if not p.get('is_local', False))
 
         print(f"✓ {len(pdfs)} PDFs encontrados")
         print(f"  - Exámenes: {sum(1 for p in pdfs if not p['is_solution'])}")
-        print(f"  - Soluciones: {sum(1 for p in pdfs if p['is_solution'])}\n")
+        print(f"  - Soluciones: {sum(1 for p in pdfs if p['is_solution'])}")
+        print(f"  - Ya descargados: {downloaded}")
+        print(f"  - Nuevos: {new}\n")
 
-        print("-" * 70)
-        print("Archivos encontrados:")
-        print("-" * 70)
+        # Ordenar PDFs por REF (número de referencia) de menor a mayor
+        sorted_pdfs = sorted(pdfs, key=extract_ref_number)
 
-        for i, (key, items) in enumerate(grouped.items(), 1):
-            status = "✓" if len(items) > 1 else "⊘"
-            print(f"{i:3}. [{status}] {key}")
+        print("-" * 165)
+        print(f"{'#':3} | {'LOC':3} | {'TIPO':8} | {'ID':7} | {'REF':8} | {'Categoría':35} | {'Título':75}")
+        print("-" * 165)
 
-        print("-" * 70)
-        print(f"Total: {len(pdfs)} PDFs")
-        print("=" * 70 + "\n")
+        for i, pdf in enumerate(sorted_pdfs, 1):
+            local_status = "✓" if pdf.get('is_local', False) else " "
+            doc_type = "Solution" if pdf['is_solution'] else "Exam"
+
+            # Truncar datos para que quepan en columnas
+            doc_category = pdf.get('doc_type', 'Documento')[:33]
+            doc_title_display = pdf.get('doc_title', 'Sin título')[:73]
+            doc_number = pdf.get('doc_number', f"#{pdf['doc_id']}")
+            pdf_id = pdf['name'].replace('_solution', '')
+
+            print(f"{i:3} | {local_status:3} | {doc_type:8} | {pdf_id:7} | {doc_number:8} | {doc_category:35} | {doc_title_display:75}")
+
+        print("-" * 165)
+        print(f"Total: {len(pdfs)} PDFs ({sum(1 for p in pdfs if not p['is_solution'])} exámenes + {sum(1 for p in pdfs if p['is_solution'])} soluciones)")
+        print("Leyenda: LOC=Local (✓=descargado, -=nuevo), TIPO=Exam/Solution, ID=ID descarga, REF=Referencia CatLux")
+        print("=" * 165 + "\n")
+
+
+# ============================================================================
+# FUNCIONES DE UTILIDAD
+# ============================================================================
+
+def mark_local_files(pdfs: List[Dict], save_path: Path, search_root_path: Optional[Path] = None) -> None:
+    """
+    Marca cuáles PDFs ya existen localmente.
+
+    Busca en:
+    - La carpeta específica (save_path)
+    - Si search_root_path se proporciona, busca recursivamente en TODAS las subcarpetas
+
+    Esto permite detectar PDFs descargados en otro lugar o manualmente.
+
+    Args:
+        pdfs: Lista de PDFs a marcar
+        save_path: Ruta donde buscar los archivos (punto de partida)
+        search_root_path: Ruta raíz para buscar recursivamente (ej: CATLUX_SAVE_PATH)
+    """
+    for pdf in pdfs:
+        # Por defecto, marcar como no local
+        pdf['is_local'] = False
+        pdf['local_path'] = None
+
+        pdf_file = save_path / (pdf['name'] + '.pdf')
+
+        # Primero buscar en la carpeta específica
+        if pdf_file.exists():
+            pdf['is_local'] = True
+            pdf['local_path'] = pdf_file  # Guardar ruta completa
+            continue
+
+        # Si no encontró y search_root_path existe, buscar recursivamente en TODAS las subcarpetas
+        if search_root_path and search_root_path.exists():
+            # Buscar recursivamente bajo la raíz (CATLUX_SAVE_PATH)
+            for found_file in search_root_path.rglob(f"{pdf['name']}.pdf"):
+                pdf['is_local'] = True
+                pdf['local_path'] = found_file  # Guardar ruta completa
+                logger.info(f"Detectado en otra carpeta: {found_file.relative_to(search_root_path)}")
+                break
+
+
+def ask_download_selection(pdfs: List[Dict]) -> Optional[List[int]]:
+    """
+    Pregunta al usuario qué PDFs descargar de forma interactiva.
+
+    Args:
+        pdfs: Lista de PDFs disponibles
+
+    Returns:
+        Lista de índices (0-basado) de PDFs a descargar, o None si volver atrás
+    """
+    print("\n" + "=" * 80)
+    print("📥 SELECCIONAR PDFS PARA DESCARGAR")
+    print("=" * 80)
+    print("\nOpciones de descarga:")
+    print("  0. Descargar TODOS (incluyendo archivos ya descargados)")
+    print("  1. Descargar solo NUEVOS (archivos que no existen aún)")
+    print("  2. Seleccionar números específicos (ej: 1,3,5)")
+    print("\nOpciones de navegación:")
+    print("  8. NO descargar nada (salir)")
+    print("  9. Volver atrás (seleccionar otras categorías)")
+    print("\n" + "=" * 80)
+
+    while True:
+        try:
+            user_input = input("\nSelección: ").strip().lower()
+
+            if user_input == '0':
+                # Descargar todos (incluso los que ya existen)
+                return list(range(len(pdfs)))
+
+            elif user_input == '1':
+                # Solo nuevos (que no existen localmente)
+                new_indices = [i for i, pdf in enumerate(pdfs) if not pdf.get('is_local', False)]
+                return new_indices
+
+            elif user_input == '2':
+                # Seleccionar números específicos
+                numbers_input = input("Escribe números (ej: 1,3,5): ").strip()
+                indices = [int(x.strip()) - 1 for x in numbers_input.split(',')]
+                if all(0 <= i < len(pdfs) for i in indices):
+                    return sorted(list(set(indices)))
+                else:
+                    print(f"❌ Números inválidos. Rango válido: 1-{len(pdfs)}")
+                    continue
+
+            elif user_input == '8':
+                # No descargar nada (salir)
+                return []
+
+            elif user_input == '9':
+                # Volver atrás (si es posible)
+                return None  # Señal para volver atrás
+
+            else:
+                print("❌ Opción inválida. Usa 0, 1, 2, 8, o 9")
+                continue
+
+        except (ValueError, IndexError):
+            print("❌ Entrada inválida. Intenta de nuevo.")
+            continue
 
 
 # ============================================================================
@@ -281,7 +508,19 @@ class PDFManager:
 # ============================================================================
 
 def get_credentials() -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
-    """Obtiene las credenciales desde variables de entorno."""
+    """
+    Obtiene las credenciales desde variables de entorno (.env).
+
+    Busca las siguientes variables:
+    - CATLUX_USERNAME: Email/usuario de CatLux
+    - CATLUX_PASSWORD: Contraseña de CatLux
+    - CATLUX_CERT_PATH: Ruta al certificado SSL (opcional)
+    - CATLUX_SAVE_PATH: Ruta donde guardar PDFs (requerido)
+
+    Returns:
+        Tupla de (username, password, cert_path, save_path)
+        Retorna (None, None, None, None) si faltan credenciales
+    """
     username = os.getenv("CATLUX_USERNAME")
     password = os.getenv("CATLUX_PASSWORD")
     cert_path = os.getenv("CATLUX_CERT_PATH", "")
@@ -300,29 +539,74 @@ def get_credentials() -> Tuple[Optional[str], Optional[str], Optional[str], Opti
 
 def login_to_catlux(session: requests.Session, username: str, password: str,
                     cert_path: Optional[str]) -> bool:
-    """Realiza login en CatLux."""
+    """
+    Realiza login en CatLux con credenciales proporcionadas.
+
+    Extrae dinámicamente el formulario de login, REQUEST_TOKEN y otros parámetros
+    para manejar cambios en la estructura de CatLux.
+
+    Args:
+        session: Sesión de requests para realizar la autenticación
+        username: Nombre de usuario/email de CatLux
+        password: Contraseña de CatLux
+        cert_path: Ruta al certificado SSL (opcional, puede ser None)
+
+    Returns:
+        True si el login fue exitoso, False en caso contrario
+    """
     try:
-        kwargs = {"verify": cert_path} if cert_path else {}
-        login_page_req = session.get(LOGIN_URL, **kwargs, timeout=10)
+        # Usar verify=False para evitar problemas de SSL
+        # (CatLux usa certificado auto-firmado)
+        kwargs = {"verify": False, "timeout": 10}
+
+        login_page_req = session.get(LOGIN_URL, **kwargs)
         login_page_req.raise_for_status()
 
         soup_login = BeautifulSoup(login_page_req.content, 'html.parser')
-        token_input = soup_login.find('input', {'name': 'REQUEST_TOKEN'})
 
-        if not token_input:
-            logger.error("No se encontró token de login")
+        # Buscar el formulario de login (el que tiene username y password)
+        login_form = None
+        for form in soup_login.find_all('form'):
+            if form.find('input', {'name': 'username'}) and form.find('input', {'name': 'password'}):
+                login_form = form
+                break
+
+        if not login_form:
+            logger.error("No se encontró formulario de login")
             return False
 
-        request_token = token_input['value']
+        # Obtener el ID del formulario (es el FORM_SUBMIT value)
+        form_submit_value = login_form.get('id', 'tl_login')
 
+        # Obtener el REQUEST_TOKEN del formulario
+        token_input = login_form.find('input', {'name': 'REQUEST_TOKEN'})
+        if not token_input:
+            logger.error("No se encontró REQUEST_TOKEN")
+            return False
+
+        request_token = token_input.get('value', '')
+
+        # Obtener otros campos ocultos
+        target_path = ''
+        target_path_input = login_form.find('input', {'name': '_target_path'})
+        if target_path_input:
+            target_path = target_path_input.get('value', '')
+
+        # Construir payload
         payload = {
-            'FORM_SUBMIT': 'tl_login',
+            'FORM_SUBMIT': form_submit_value,
             'REQUEST_TOKEN': request_token,
             'username': username,
             'password': password
         }
 
-        login_req = session.post(LOGIN_URL, data=payload, **kwargs, timeout=10)
+        if target_path:
+            payload['_target_path'] = target_path
+            payload['_always_use_target_path'] = '0'
+
+        logger.info(f"Login: usando FORM_SUBMIT={form_submit_value}")
+
+        login_req = session.post(LOGIN_URL, data=payload, **kwargs)
         login_req.raise_for_status()
 
         logger.info("✓ Login exitoso")
@@ -337,45 +621,180 @@ def login_to_catlux(session: requests.Session, username: str, password: str,
 # FUNCIONES DE DESCARGA Y PREVIEW
 # ============================================================================
 
-def preview_pdfs(base_url: str, max_pages: int = 10) -> int:
+def select_category_interactive() -> Optional[str]:
     """
-    Muestra preview de PDFs sin descargar.
+    Permite al usuario seleccionar la categoría interactivamente.
+    Construye la URL: https://www.catlux.de/proben/gymnasium/klasse-X/asignatura/tipo
+
+    Returns:
+        URL construida o None si el usuario cancela
+    """
+    base_url = "https://www.catlux.de/proben/gymnasium"
+
+    # Klassen disponibles
+    klassen = {
+        '5': 'klasse-5',
+        '6': 'klasse-6',
+        '7': 'klasse-7',
+        '8': 'klasse-8',
+        '9': 'klasse-9',
+        '10': 'klasse-10',
+        '11': 'klasse-11',
+        '12': 'klasse-12',
+    }
+
+    # Asignaturas disponibles
+    subjects = {
+        '1': 'deutsch',
+        '2': 'englisch',
+        '3': 'mathematik',
+        '4': 'latein',
+        '5': 'franzoesisch',
+        '6': 'geschichte',
+        '7': 'erdkunde-geographie',
+        '8': 'biologie',
+        '9': 'chemie',
+        '10': 'physik',
+        '11': 'natur-und-technik',
+        '12': 'sonstiges',
+    }
+
+    # Tipos de documentos
+    doc_types = {
+        '1': 'aufsatz',
+        '2': 'schulaufgabe',
+        '3': 'extemporale',
+        '4': 'kurzarbeit',
+        '5': 'arbeitsblatt',
+        '6': 'grammatik',
+    }
+
+    print("\n" + "=" * 80)
+    print("📚 SELECCIONAR CATEGORÍA")
+    print("=" * 80)
+
+    # Seleccionar Klasse
+    print("\n📍 Selecciona Klasse:")
+    for key, value in klassen.items():
+        print(f"  {key}. {value}")
+    while True:
+        klasse_choice = input("\nSelección: ").strip()
+        if klasse_choice in klassen:
+            selected_klasse = klassen[klasse_choice]
+            print(f"✓ Klasse seleccionada: {selected_klasse}")
+            break
+        else:
+            print("❌ Opción inválida")
+
+    # Seleccionar Asignatura
+    print("\n📍 Selecciona Asignatura:")
+    for key, value in subjects.items():
+        print(f"  {key}. {value}")
+    while True:
+        subject_choice = input("\nSelección: ").strip()
+        if subject_choice in subjects:
+            selected_subject = subjects[subject_choice]
+            print(f"✓ Asignatura seleccionada: {selected_subject}")
+            break
+        else:
+            print("❌ Opción inválida")
+
+    # Seleccionar Tipo de Documento
+    print("\n📍 Selecciona Tipo de Documento:")
+    for key, value in doc_types.items():
+        print(f"  {key}. {value}")
+    print("  0. (Ninguno - ver todo)")
+    while True:
+        type_choice = input("\nSelección: ").strip()
+        if type_choice == '0':
+            # Sin filtro de tipo, solo klasse/subject
+            url = f"{base_url}/{selected_klasse}/{selected_subject}/"
+            print(f"✓ Tipo: sin filtro (verás todos)")
+            break
+        elif type_choice in doc_types:
+            selected_type = doc_types[type_choice]
+            url = f"{base_url}/{selected_klasse}/{selected_subject}/{selected_type}"
+            print(f"✓ Tipo seleccionado: {selected_type}")
+            break
+        else:
+            print("❌ Opción inválida")
+
+    print("\n" + "=" * 80)
+    print(f"📌 URL: {url}")
+    print("=" * 80 + "\n")
+
+    return url
+
+
+def preview_pdfs(base_url: str, max_pages: int = 10) -> Tuple[List[Dict], List[int]]:
+    """
+    Muestra preview de PDFs y pregunta cuáles descargar.
 
     Args:
         base_url: URL base de la clase
         max_pages: Máximo de páginas a procesar
 
     Returns:
-        Número de PDFs encontrados
+        Tupla de (lista de PDFs, índices a descargar)
     """
-    username, password, cert_path, _ = get_credentials()
-    if not all([username, password]):
-        return 0
+    username, password, cert_path, save_base_path = get_credentials()
+    if not all([username, password, save_base_path]):
+        return [], []
+
+    # Extraer carpeta de destino (klasse-X/asignatura)
+    full_save_path = extract_category_path(base_url, save_base_path)
+    if not full_save_path:
+        return [], []
 
     session = requests.Session()
 
     try:
         if not login_to_catlux(session, username, password, cert_path):
-            return 0
+            return [], []
 
         manager = PDFManager(session, cert_path)
         pdfs = manager.fetch_pdfs(base_url, max_pages)
 
-        manager.print_preview(pdfs, base_url)
-        return len(pdfs)
+        # Marcar archivos locales (buscar recursivamente en CATLUX_SAVE_PATH)
+        mark_local_files(pdfs, full_save_path, Path(save_base_path))
+
+        # Mostrar preview
+        manager.print_preview(pdfs, base_url, full_save_path)
+
+        # IMPORTANTE: Reordenar la lista igual que en print_preview()
+        # para que los índices seleccionados correspondan a lo que el usuario vio
+        pdfs = sorted(pdfs, key=extract_ref_number)
+
+        # Pedir selección
+        selected_indices = ask_download_selection(pdfs)
+
+        return pdfs, selected_indices
 
     except Exception as e:
         logger.error(f"Error en preview: {e}")
-        return 0
+        return [], []
 
     finally:
         session.close()
 
 
 def download_filtered_pdfs(base_url: str, max_pages: int = 10,
-                          tracker: Optional[DownloadTracker] = None) -> int:
-    """Descarga PDFs de una clase desde CatLux."""
+                          tracker: Optional[DownloadTracker] = None,
+                          pdfs: Optional[List[Dict]] = None,
+                          selected_indices: Optional[List[int]] = None) -> int:
+    """
+    Descarga PDFs de una clase desde CatLux.
 
+    Args:
+        base_url: URL base de la clase
+        max_pages: Máximo de páginas (solo usado si pdfs es None)
+        tracker: Rastreador de descargas
+        pdfs: Lista pre-obtenida de PDFs (si es None, se obtiene)
+        selected_indices: Índices de PDFs a descargar (0-basado)
+
+    Returns:
+        Número de PDFs descargados
+    """
     if tracker is None:
         tracker = DownloadTracker(TRACKER_FILE)
 
@@ -383,14 +802,9 @@ def download_filtered_pdfs(base_url: str, max_pages: int = 10,
     if not all([username, password, save_base_path]):
         return 0
 
-    # Extraer clase y asignatura de la URL
-    try:
-        url_parts = base_url.rstrip('/').split('/')
-        subject_folder = url_parts[-1]
-        class_folder = url_parts[-2]
-        full_save_path = Path(save_base_path) / class_folder / subject_folder
-    except (IndexError, ValueError) as e:
-        logger.error(f"Error parseando URL: {e}")
+    # Extraer clase y asignatura de la URL (klasse-X/asignatura)
+    full_save_path = extract_category_path(base_url, save_base_path)
+    if not full_save_path:
         return 0
 
     full_save_path.mkdir(parents=True, exist_ok=True)
@@ -410,15 +824,25 @@ def download_filtered_pdfs(base_url: str, max_pages: int = 10,
             logger.error("No se pudo completar el login")
             return 0
 
+        # Crear gestor de PDFs una sola vez
         manager = PDFManager(session, cert_path)
-        pdfs = manager.fetch_pdfs(base_url, max_pages)
 
-        # Mostrar preview antes de descargar
-        manager.print_preview(pdfs, base_url)
+        # Si no se pasaron PDFs, obtenerlos ahora
+        if pdfs is None:
+            pdfs = manager.fetch_pdfs(base_url, max_pages)
+            # Si no se especificaron índices, descargar todos
+            if selected_indices is None:
+                selected_indices = list(range(len(pdfs)))
 
         print("\n🔄 Iniciando descargas...\n")
 
-        for pdf in pdfs:
+        # Descargar solo los PDFs seleccionados
+        pdfs_to_download = [pdfs[i] for i in selected_indices if i < len(pdfs)]
+
+        # Crear conjunto de IDs ya procesados para evitar descargar dos veces
+        processed_ids = set()
+
+        for pdf in pdfs_to_download:
             if tracker.get_remaining_downloads() == 0:
                 logger.warning("Límite alcanzado, deteniendo descargas")
                 break
@@ -426,24 +850,15 @@ def download_filtered_pdfs(base_url: str, max_pages: int = 10,
             pdf_name = pdf['name']
             pdf_save_path = full_save_path / (pdf_name + ".pdf")
 
-            # Si es solución, solo descargar si el examen ya existe
-            if pdf['is_solution']:
-                exam_name = pdf_name.replace("_solution", "")
-                exam_path = full_save_path / (exam_name + ".pdf")
-
-                if not exam_path.exists():
-                    logger.info(f"⊘ {pdf_name}.pdf - examen no existe, saltando solución")
-                    continue
-            else:
-                # Es examen, descargar solo si no existe
-                if pdf_save_path.exists():
-                    logger.info(f"✓ {pdf_name}.pdf - ya existe")
-                    continue
+            # Si ya existe localmente (marcado en mark_local_files()), saltarlo
+            if pdf.get('is_local', False):
+                local_path = pdf.get('local_path', pdf_save_path)
+                logger.info(f"✓ {pdf_name}.pdf - ya existe en {local_path.relative_to(Path(save_base_path))}")
+                continue
 
             # Descargar
             try:
-                kwargs = {"verify": cert_path} if cert_path else {}
-                r = session.get(pdf['full_url'], **kwargs, timeout=30)
+                r = session.get(pdf['full_url'], verify=False, timeout=30)
                 r.raise_for_status()
 
                 with open(pdf_save_path, 'wb') as f:
@@ -452,6 +867,41 @@ def download_filtered_pdfs(base_url: str, max_pages: int = 10,
                 tracker.record_download(pdf_name)
                 downloaded_count += 1
                 logger.info(f"⬇ {pdf_name}.pdf - descargado ({tracker.get_remaining_downloads()} restantes)")
+
+                # Para cada examen descargado, intentar descargar automáticamente su solución
+                # (Esto previene descargas duplicadas si la solución aparece por separado en la lista)
+                if not pdf['is_solution']:
+                    base_id = pdf['name']
+                    # Verificar si ya procesamos este ID de examen
+                    if base_id not in processed_ids:
+                        processed_ids.add(base_id)  # Marcar como procesado para evitar duplicados
+
+                        # Buscar la solución correspondiente en la lista de PDFs
+                        solution_name = f"{base_id}_solution"
+                        solution = next((p for p in pdfs if p['name'] == solution_name), None)
+
+                        if solution:
+                            solution_path = full_save_path / (solution_name + ".pdf")
+
+                            # Solo descargar si el archivo de solución no existe localmente
+                            if not solution_path.exists():
+                                try:
+                                    # Descargar el PDF de solución
+                                    r_sol = session.get(solution['full_url'], verify=False, timeout=30)
+                                    r_sol.raise_for_status()
+
+                                    with open(solution_path, 'wb') as f:
+                                        f.write(r_sol.content)
+
+                                    tracker.record_download(solution_name)
+                                    downloaded_count += 1
+                                    logger.info(f"⬇ {solution_name}.pdf - descargado ({tracker.get_remaining_downloads()} restantes)")
+
+                                except Exception as e:
+                                    logger.error(f"Error descargando solución {solution_name}: {e}")
+                            else:
+                                # La solución ya existe localmente, no descargar
+                                logger.info(f"✓ {solution_name}.pdf - ya existe")
 
             except Exception as e:
                 logger.error(f"Error descargando {pdf_name}: {e}")
@@ -469,7 +919,15 @@ def download_filtered_pdfs(base_url: str, max_pages: int = 10,
 
 
 def show_latest_downloads(tracker: Optional[DownloadTracker] = None) -> None:
-    """Muestra las últimas descargas registradas."""
+    """
+    Muestra las últimas descargas registradas (máximo 20).
+
+    Muestra un historial cronológico invertido (más recientes primero) de los PDFs
+    descargados, incluyendo la fecha de descarga.
+
+    Args:
+        tracker: Rastreador de descargas. Si es None, se crea uno nuevo usando TRACKER_FILE
+    """
     if tracker is None:
         tracker = DownloadTracker(TRACKER_FILE)
 
@@ -497,8 +955,19 @@ def show_latest_downloads(tracker: Optional[DownloadTracker] = None) -> None:
 # MAIN
 # ============================================================================
 
-def main():
-    """Función principal."""
+def main() -> int:
+    """
+    Función principal que gestiona el flujo de la aplicación.
+
+    Maneja argumentos CLI y controla el bucle interactivo de descarga:
+    1. Procesa argumentos (--url, --info, --latest, --select-category, etc.)
+    2. Ejecuta preview de PDFs de forma interactiva
+    3. Permite al usuario seleccionar qué descargar
+    4. Si --select-category, permite seleccionar múltiples categorías en una sesión
+
+    Returns:
+        Código de salida (0=éxito, 1=error)
+    """
     parser = argparse.ArgumentParser(
         description="Descargador de PDFs de CatLux con preview de categorías"
     )
@@ -538,6 +1007,11 @@ def main():
         action="store_true",
         help="⚠️  ADVERTENCIA: Borra el historial de descargas"
     )
+    parser.add_argument(
+        "--select-category",
+        action="store_true",
+        help="Seleccionar categoría interactivamente (Klasse, Asignatura, Tipo)"
+    )
 
     args = parser.parse_args()
     tracker = DownloadTracker(TRACKER_FILE)
@@ -564,30 +1038,62 @@ def main():
     # Obtener URL
     url = args.url
     if not url:
-        url = os.getenv("CATLUX_DEFAULT_URL", "").strip()
-        if not url:
-            print("Uso: python catlux_scrapper.py --url 'https://www.catlux.de/proben/...'")
-            print("      python catlux_scrapper.py --preview --url '...'")
-            print("      python catlux_scrapper.py --info")
-            return 1
+        if args.select_category:
+            # Selección interactiva de categoría
+            url = select_category_interactive()
+        else:
+            url = os.getenv("CATLUX_DEFAULT_URL", "").strip()
 
-    # Preview o descargar
-    if args.preview:
+    if not url:
+        print("Uso: python catlux_scrapper.py --url 'https://www.catlux.de/proben/...'")
+        print("      python catlux_scrapper.py --select-category  # Selección interactiva")
+        print("      python catlux_scrapper.py --info")
+        return 1
+
+    # Bucle principal: permite volver a seleccionar categorías
+    while True:
+        # Preview (siempre interactivo - pregunta qué descargar)
         logger.info(f"Iniciando preview desde: {url}")
-        count = preview_pdfs(url, args.pages)
-        print(f"\nℹ️  Ejecuta: python catlux_scrapper.py --download --url '{url}' para descargar")
-        return 0
+        pdfs, selected_indices = preview_pdfs(url, args.pages)
 
-    if args.download:
-        logger.info(f"Iniciando descarga desde: {url}")
-        download_filtered_pdfs(url, args.pages, tracker)
-        return 0
+        if not pdfs:
+            logger.error("No se encontraron PDFs")
+            # Si no hay PDFs pero era selección interactiva, permitir volver atrás
+            if args.select_category:
+                print("\n⚠️  No se encontraron PDFs en esta categoría")
+                url = select_category_interactive()
+                continue
+            else:
+                return 1
 
-    # Default: preview
-    logger.info(f"Iniciando preview desde: {url}")
-    count = preview_pdfs(url, args.pages)
-    print(f"\nℹ️  Ejecuta: python catlux_scrapper.py --download --url '{url}' para descargar")
-    return 0
+        # Si selected_indices es None, el usuario quiere volver a seleccionar categorías
+        if selected_indices is None:
+            if args.select_category:
+                print("\n📚 Volviendo a seleccionar categoría...")
+                url = select_category_interactive()
+                continue
+            else:
+                print("\n✓ Cancelado")
+                return 0
+
+        # Si se seleccionaron PDFs para descargar, ejecutar descarga
+        if selected_indices:
+            logger.info(f"Descargando {len(selected_indices)} PDFs seleccionados...")
+            download_filtered_pdfs(url, args.pages, tracker, pdfs, selected_indices)
+        else:
+            print("\n✓ No se descargará nada (seleccionaste 'none')")
+
+        # Preguntar si volver a seleccionar categorías o salir
+        if args.select_category:
+            print("\n¿Qué deseas hacer?")
+            print("  1. Seleccionar otras categorías")
+            print("  2. Salir")
+            choice = input("Opción: ").strip()
+            if choice == '1':
+                url = select_category_interactive()
+                continue
+
+        return 0
 
 
 if __name__ == '__main__':
