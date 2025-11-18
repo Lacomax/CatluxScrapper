@@ -1,16 +1,25 @@
-# CatLux Scrapper - Descargador inteligente de PDFs
+# CatLux Scrapper - Descargador Inteligente de PDFs
 
-Descargador automático de exámenes y soluciones de [CatLux](https://www.catlux.de) con control de límite mensual (100 PDFs/mes).
+Descargador automático de exámenes y soluciones de [CatLux](https://www.catlux.de) con:
+- ✅ Control de límite mensual (100 PDFs/mes)
+- ✅ Preview interactivo antes de descargar
+- ✅ Evita duplicados automáticamente
+- ✅ Descarga soluciones automáticamente con exámenes
+- ✅ Búsqueda global de archivos en todas las carpetas
+- ✅ Selección interactiva de categorías (Klasse, Asignatura, Tipo)
 
 ## 🚀 Características
 
-- **Control de límite mensual**: Máximo 100 descargas/mes (limite de CatLux)
-- **Evita duplicados**: Solo descarga si el archivo no existe ya
-- **Descarga inteligente**: Solo descarga solución si el examen existe
-- **Tracking de descargas**: Ve tu saldo disponible en cualquier momento
+- **Preview Interactivo**: Ve todos los PDFs disponibles antes de descargar
+- **Evita Duplicados**: Solo descarga si el archivo no existe ya
+- **Soluciones Automáticas**: Descarga automáticamente la solución junto con el examen
+- **Control de Límite**: Máximo 100 descargas/mes (límite de CatLux)
+- **Tracking**: Ve tu saldo disponible en cualquier momento
+- **Búsqueda Global**: Detecta PDFs descargados en otras carpetas
+- **Categorías Interactivas**: Selecciona Klasse, Asignatura y Tipo de forma interactiva
 - **Multiplataforma**: Funciona en Windows, macOS y Linux
-- **Logging detallado**: Archivo de log para auditar descargas
-- **Credenciales seguras**: Usa archivo `.env` (no versionado en git)
+- **Logging Detallado**: Archivo de log para auditar descargas
+- **Credenciales Seguras**: Usa archivo `.env` (no versionado en git)
 
 ## 📋 Requisitos
 
@@ -20,7 +29,7 @@ Descargador automático de exámenes y soluciones de [CatLux](https://www.catlux
 
 ## 🔧 Instalación
 
-### 1. Clonar/Actualizar el repositorio
+### 1. Clonar/Descargar el repositorio
 
 ```bash
 cd CatluxScrapper
@@ -70,59 +79,32 @@ CATLUX_SAVE_PATH=/home/tuUsuario/Documentos/Catlux
 
 ## 📖 Uso
 
-### 1️⃣ PASO 1: Ver preview de PDFs (RECOMENDADO)
+### Opción 1: Selección Interactiva de Categorías (RECOMENDADO)
 
-Antes de descargar, ve qué PDFs encontró el script:
-
-```bash
-python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7/deutsch/" --preview
-```
-
-Salida:
-```
-======================================================================
-📋 PREVIEW DE PDFS ENCONTRADOS
-======================================================================
-
-📚 Clase: KLASSE-7
-📖 Asignatura: DEUTSCH
-
-✓ 28 PDFs encontrados
-  - Exámenes: 14
-  - Soluciones: 14
-
-----------------------------------------------------------------------
-Archivos encontrados:
-----------------------------------------------------------------------
-  1. [✓] 119215 (solución)
-  2. [✓] 118065 (solución)
-  3. [✓] 112650 (solución)
-  4. [⊘] 113649 (sin solución)
-  ...
-----------------------------------------------------------------------
-Total: 28 PDFs
-======================================================================
-```
-
-**Símbolos:**
-- `[✓]` = Tiene examen Y solución
-- `[⊘]` = Solo examen (sin solución)
-
-### 2️⃣ PASO 2: Descargar PDFs
-
-Después de verificar el preview, descarga:
+La forma más fácil para usuarios nuevos - selecciona categorías de forma interactiva:
 
 ```bash
-python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7/deutsch/" --download
+python catlux_scrapper.py --select-category
 ```
 
-El script:
-1. Muestra el preview nuevamente
-2. Descarga solo PDFs nuevos (evita duplicados)
-3. Solo descarga soluciones si el examen existe
-4. Muestra el saldo después de descargar
+El script te pedirá:
+1. **Klasse** (5-12)
+2. **Asignatura** (Deutsch, Englisch, Mathematik, etc.)
+3. **Tipo de Documento** (Aufsatz, Schulaufgabe, Extemporale, etc.)
 
-### 3️⃣ PASO 3: Ver estado de descargas
+Luego mostrará preview y preguntará qué descargar.
+
+### Opción 2: URL Directa
+
+Si conoces la URL exacta:
+
+```bash
+python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7/deutsch/"
+```
+
+Esto mostrará preview de forma interactiva y preguntará qué descargar.
+
+### Opción 3: Ver Saldo Disponible
 
 ```bash
 python catlux_scrapper.py --info
@@ -133,7 +115,7 @@ Salida:
 ============================================================
 📊 ESTADO DE DESCARGAS
 ============================================================
-Mes actual: November 2024
+Mes actual: November 2025
 Descargas este mes: 45/100
 Descargas disponibles: 55
 Total histórico: 247
@@ -141,73 +123,187 @@ Total histórico: 247
 ============================================================
 ```
 
-### 4️⃣ PASO 4: Ver últimas descargas realizadas
+### Opción 4: Ver Últimas Descargas
 
 ```bash
 python catlux_scrapper.py --latest
 ```
 
-Salida:
-```
-============================================================
-📥 ÚLTIMAS DESCARGAS (máximo 20)
-============================================================
- 1. [2024-11-17] 119215.pdf
- 2. [2024-11-17] 119215_solution.pdf
- 3. [2024-11-17] 118065.pdf
- 4. [2024-11-17] 118065_solution.pdf
-...
-============================================================
-```
+## 🎯 Flujo Completo Paso a Paso
 
-### Opciones
-
-- `--url URL`: URL base de la clase a procesar
-- `--pages N`: Número máximo de páginas (default: 10)
-- `--preview`: Mostrar preview SIN descargar
-- `--download`: Descargar después de preview
-- `--info`: Ver estado de descargas este mes
-- `--latest`: Ver últimas 20 descargas realizadas
-- `--reset-tracker`: ⚠️ Borrar historial (CUIDADO)
-
-### Flujo recomendado
+### Paso 1: Ejecutar con Selección Interactiva
 
 ```bash
-# 1. Ver saldo disponible
-python catlux_scrapper.py --info
-
-# 2. Ver qué PDFs hay en Deutsch
-python catlux_scrapper.py --url "...klasse-7/deutsch/" --preview
-
-# 3. Si todo está bien, descargar
-python catlux_scrapper.py --url "...klasse-7/deutsch/" --download
-
-# 4. Ver saldo después de descargar
-python catlux_scrapper.py --info
-
-# 5. Repetir para otras asignaturas
-python catlux_scrapper.py --url "...klasse-7/mathematik/" --preview
-python catlux_scrapper.py --url "...klasse-7/mathematik/" --download
+python catlux_scrapper.py --select-category
 ```
 
-## 📁 Estructura de carpetas
+### Paso 2: Ver Preview
 
-Los PDFs se guardan automáticamente en esta estructura:
+El script mostrará todos los PDFs disponibles:
+
+```
+================================================================================
+📋 PREVIEW DE PDFS ENCONTRADOS
+================================================================================
+
+📚 Clase: KLASSE-7
+📖 Asignatura: DEUTSCH
+
+✓ 48 PDFs encontrados
+  - Exámenes: 24
+  - Soluciones: 24
+  - Ya descargados: 1
+  - Nuevos: 47
+
+#   | LOC | TIPO     | ID     | REF      | Categoría                       | Título
+----|-----|----------|--------|----------|----------------------------------|---
+  1 |     | Exam     | 112399 | #0309    | 0. Schulaufgabe, Aufsatz        | begründete Stellungnahme
+  2 |     | Solution | 112399 | #0309    | 0. Schulaufgabe, Aufsatz        | begründete Stellungnahme
+  3 |     | Exam     | 112780 | #0272    | 1. Schulaufgabe, Aufsatz        | Erlebnisschilderung
+  4 |     | Solution | 112780 | #0272    | 1. Schulaufgabe, Aufsatz        | Erlebnisschilderung
+ ...
+ 47 | ✓   | Exam     | 113132 | #0463    | 4. Schulaufgabe, Aufsatz        | begründete Stellungnahme
+ 48 |     | Solution | 113132 | #0463    | 4. Schulaufgabe, Aufsatz        | begründete Stellungnahme
+================================================================================
+Total: 48 PDFs (24 exámenes + 24 soluciones)
+Leyenda: LOC=Local (✓=descargado, -=nuevo), TIPO=Exam/Solution, ID=ID descarga, REF=Referencia CatLux
+================================================================================
+```
+
+**Leyenda:**
+- `#` = Número de fila (1-48)
+- `LOC` = Local (✓ = ya descargado, espacio = nuevo)
+- `TIPO` = Tipo (Exam = examen, Solution = solución)
+- `ID` = ID interno de CatLux para descargar
+- `REF` = Número de referencia de CatLux (ordenado ascendentemente #0272, #0309, etc.)
+- `Categoría` = Tipo de ejercicio (Schulaufgabe, Aufsatz, etc.)
+- `Título` = Nombre del documento (hasta 75 caracteres)
+
+### Paso 3: Seleccionar PDFs a Descargar
+
+El script preguntará interactivamente:
+
+```
+================================================================================
+📥 SELECCIONAR PDFS PARA DESCARGAR
+================================================================================
+
+Opciones:
+  0. Descargar TODOS los nuevos
+  1. NO descargar nada
+  2. Descargar solo los NUEVOS (no los ya descargados)
+  3. Seleccionar números específicos (ej: 1,3,5)
+  9. Volver atrás (seleccionar otras categorías)
+
+================================================================================
+
+Selección: _
+```
+
+**Ejemplos de selección:**
+
+1. **Descargar todos los nuevos:**
+   ```
+   Selección: 0
+   ```
+
+2. **No descargar nada:**
+   ```
+   Selección: 1
+   ```
+
+3. **Solo los nuevos:**
+   ```
+   Selección: 2
+   ```
+
+4. **Específicos (1, 3, 5):**
+   ```
+   Selección: 3
+   Escribe números (ej: 1,3,5): 1,3,5
+   ```
+
+5. **Volver atrás para otra categoría:**
+   ```
+   Selección: 9
+   ```
+
+### Paso 4: Descarga Automática
+
+El script descargará los PDFs seleccionados:
+
+```
+🔄 Iniciando descargas...
+
+2025-11-18 14:30:45 - INFO - ⬇ 112399.pdf - descargado (98 restantes)
+2025-11-18 14:30:46 - INFO - ⬇ 112399_solution.pdf - descargado (97 restantes)
+2025-11-18 14:30:48 - INFO - ✓ 119215.pdf - ya existe
+2025-11-18 14:30:50 - INFO - ⬇ 118065.pdf - descargado (96 restantes)
+2025-11-18 14:30:52 - INFO - ⬇ 118065_solution.pdf - descargado (95 restantes)
+...
+
+🔄 Descarga completada: 4 nuevos PDFs
+```
+
+### Paso 5: Estado Final
+
+```
+============================================================
+📊 ESTADO DE DESCARGAS
+============================================================
+Mes actual: November 2025
+Descargas este mes: 48/100
+Descargas disponibles: 52
+Total histórico: 247
+✅ 52 descargas disponibles
+============================================================
+```
+
+## 🔄 Descarga Automática de Soluciones
+
+**Característica principal:** Cuando seleccionas un examen, **automáticamente se descarga su solución**.
+
+Ejemplo:
+```
+Usuario selecciona: 1,3,5 (índices de exámenes)
+    ↓
+Script procesa índice 1 (examen 112399):
+  ⬇ 112399.pdf - descargado
+  ⬇ 112399_solution.pdf - descargado (automáticamente)
+    ↓
+Script procesa índice 3 (examen 112780):
+  ⬇ 112780.pdf - descargado
+  ⬇ 112780_solution.pdf - descargado (automáticamente)
+```
+
+**Conteo inteligente:**
+- Cada PDF = 1 descarga
+- Seleccionar 5 exámenes ≈ 10 descargas (5 exam + 5 solutions)
+- El script es honesto con el contador de CatLux (100/mes)
+
+## 📁 Estructura de Carpetas
+
+Los PDFs se guardan automáticamente así:
 
 ```
 CATLUX_SAVE_PATH/
-└── klasse-7/
-    ├── deutsch/
-    │   ├── 119215.pdf
-    │   ├── 119215_solution.pdf
-    │   ├── 118065.pdf
-    │   └── ...
-    ├── mathematik/
-    │   └── ...
-    └── ...
+├── klasse-7/
+│   ├── deutsch/
+│   │   ├── 112399.pdf
+│   │   ├── 112399_solution.pdf
+│   │   ├── 118065.pdf
+│   │   ├── 118065_solution.pdf
+│   │   └── ...
+│   ├── mathematik/
+│   │   └── ...
+│   └── ...
+├── klasse-8/
+│   ├── englisch/
+│   └── ...
+└── ...
 ```
 
-## 📊 Archivos generados
+## 📊 Archivos Generados
 
 ### `download_tracker.json`
 
@@ -217,11 +313,11 @@ Registra todas las descargas realizadas:
 {
   "downloads": [
     {
-      "date": "2024-11-17T14:30:45.123456",
+      "date": "2025-11-18T14:30:45.123456",
       "filename": "119215.pdf"
     },
     {
-      "date": "2024-11-17T14:31:12.654321",
+      "date": "2025-11-18T14:30:47.654321",
       "filename": "119215_solution.pdf"
     }
   ],
@@ -234,12 +330,12 @@ Registra todas las descargas realizadas:
 Log detallado de todas las operaciones:
 
 ```
-2024-11-17 14:30:42 - INFO - Iniciando descarga desde: https://www.catlux.de/...
-2024-11-17 14:30:43 - INFO - ✓ Login exitoso
-2024-11-17 14:30:45 - INFO - ⬇ 119215.pdf - descargado (54 restantes)
+2025-11-18 14:30:42 - INFO - Iniciando preview desde: https://www.catlux.de/...
+2025-11-18 14:30:43 - INFO - ✓ Login exitoso
+2025-11-18 14:30:45 - INFO - ⬇ 119215.pdf - descargado (54 restantes)
 ```
 
-## ⚠️ Límite de descargas
+## ⚠️ Límite de Descargas
 
 CatLux limita a **100 descargas por mes calendario**.
 
@@ -247,30 +343,13 @@ CatLux limita a **100 descargas por mes calendario**.
 - **Contador**: Se reinicia automáticamente el 1º de cada mes
 - **Recomendación**: Usa `--info` antes de descargar para ver tu saldo
 
-Ejemplo de estrategia para 7a Klasse con 3 asignaturas:
-
-```bash
-# Octubre 1-31: Descargar 33 PDFs por asignatura (Deutsch, Mathematik, Englisch)
-# - Deutsch: 10 páginas = ~30-35 PDFs
-# - Mathematik: 5 páginas = ~20-25 PDFs
-# - Englisch: 5 páginas = ~15-20 PDFs
-
-# Ver saldo
-python catlux_scrapper.py --info
-
-# Descargar prioridades
-python catlux_scrapper.py --url "...klasse-7/deutsch/" --pages 10
-python catlux_scrapper.py --url "...klasse-7/mathematik/" --pages 8
-python catlux_scrapper.py --url "...klasse-7/englisch/" --pages 8
-```
-
 ## 🔒 Seguridad
 
 ### Credenciales
 
 - Las credenciales se guardan en `.env` (archivo ignorado por git)
-- ⚠️ El archivo `.env` contiene datos sensibles - NUNCA lo commits
-- ⚠️ NUNCA compartas el archivo `.env`
+- ⚠️ El archivo `.env` contiene datos sensibles - **NUNCA lo commits**
+- ⚠️ **NUNCA compartas** el archivo `.env**
 - Considera cambiar la contraseña CatLux periódicamente
 
 ### Certificados SSL (avanzado)
@@ -281,19 +360,13 @@ Si CatLux usa certificados auto-firmados:
 CATLUX_CERT_PATH=/ruta/al/certificado.crt
 ```
 
-En macOS con certificado en Keychain:
-
-```bash
-security find-certificate -a -p /Library/Keychains/System.keychain | openssl x509 -outform PEM > catlux.crt
-```
-
 ## 🐛 Troubleshooting
 
 ### Error: "Login fallido"
 
 1. Verifica credenciales en `.env`
 2. Prueba login manual en https://www.catlux.de
-3. Revisa si tu cuenta está activa
+3. Verifica que tu cuenta está activa
 
 ### Error: "ModuleNotFoundError"
 
@@ -303,7 +376,7 @@ pip install -r requirements.txt
 
 ### Error: "Permission denied"
 
-Asegúrate que CATLUX_SAVE_PATH existe y tienes permisos:
+Asegúrate que `CATLUX_SAVE_PATH` existe y tienes permisos:
 
 ```bash
 mkdir -p "/ruta/donde/guardar/pdfs"
@@ -333,28 +406,23 @@ tail -f catlux_scrapper.log
 Get-Content catlux_scrapper.log -Wait
 ```
 
-Símbolos en logs:
-- `✓` = Ya existe (no se descargó)
-- `⬇` = Descargado nuevo
-- `⊘` = Saltado (ej: solución sin examen)
-- `✗` = Error
-
-## 📚 URL de ejemplo para diferentes clases
+## 📚 URLs de Ejemplo
 
 ```bash
-# 7a Klasse
+# 7ª Klasse - Deutsch
 python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7/deutsch/"
+
+# 7ª Klasse - Mathematik
 python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7/mathematik/"
+
+# 7ª Klasse - Englisch
 python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7/englisch/"
 
-# 5a Klasse (anterior)
+# 5ª Klasse - Deutsch
 python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-5/deutsch/"
 
-# 6a Klasse
-python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-6/deutsch/"
-
-# 8a Klasse
-python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-8/deutsch/"
+# Con filtro por tipo:
+python catlux_scrapper.py --url "https://www.catlux.de/proben/gymnasium/klasse-7/deutsch/aufsatz"
 ```
 
 ## 🔄 Automatización (opcional)
@@ -383,14 +451,14 @@ crontab -e
 1. Abre Task Scheduler (Programador de tareas)
 2. Crear tarea básica
 3. Trigger: Monthly (1st day)
-4. Action: `python C:\path\to\catlux_scrapper.py --url "..."`
+4. Action: `python C:\path\to\catlux_scrapper.py --select-category`
 
 ## 📈 Métricas
 
 Ver total descargado desde el inicio:
 
 ```bash
-python -c "import json; print(json.load(open('download_tracker.json'))['total_all_time'])"
+python -c "import json; data=json.load(open('download_tracker.json')); print(f'Total histórico: {data.get(\"total_all_time\", 0)} PDFs')"
 ```
 
 Descargas este mes:
@@ -407,7 +475,15 @@ Uso educativo y personal. Respeta los términos de servicio de CatLux.
 
 Para reportar bugs o sugerencias, abre un issue en el repositorio.
 
+## 📖 Documentación Completa
+
+Para más detalles, revisa:
+- `WORKFLOW.md` - Guía detallada del flujo de trabajo
+- `CHANGES_SUMMARY.md` - Resumen técnico de cambios
+- `INSTALLATION.md` - Guía de instalación paso a paso
+
 ---
 
-**Última actualización**: Noviembre 2024
-**Versión**: 2.0 (Mejorada con control de límites)
+**Última actualización**: Noviembre 2025
+**Versión**: 3.0 (Versión final con código limpio y documentación completa)
+**Estado**: ✅ Producción

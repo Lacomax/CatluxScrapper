@@ -35,7 +35,7 @@ import sys
 import logging
 from pathlib import Path
 from datetime import datetime, date
-from urllib.parse import urljoin, urlparse, parse_qs
+from urllib.parse import urljoin
 from typing import Dict, Tuple, Optional, List
 import argparse
 from collections import defaultdict
@@ -74,6 +74,57 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# FUNCIONES UTILIDAD
+# ============================================================================
+
+def extract_ref_number(pdf: Dict) -> int:
+    """
+    Extrae el número de referencia (REF) para ordenar PDFs.
+
+    Busca patrones como #3426 en doc_number y extrae el número.
+    Si no encuentra número, retorna 999999 (para poner al final).
+
+    Args:
+        pdf: Diccionario del PDF con key 'doc_number'
+
+    Returns:
+        Número entero para ordenamiento
+    """
+    doc_number = pdf.get('doc_number', '')
+    match = re.search(r'#(\d+)', doc_number)
+    if match:
+        return int(match.group(1))
+    return 999999
+
+
+def extract_category_path(base_url: str, save_base_path: str) -> Optional[Path]:
+    """
+    Extrae clase y asignatura de la URL y construye la ruta de guardado.
+
+    Desde una URL como:
+    https://www.catlux.de/proben/gymnasium/klasse-7/deutsch/
+    Extrae: klasse-7 y deutsch, luego construye:
+    /save_base_path/klasse-7/deutsch/
+
+    Args:
+        base_url: URL base completa (ej: https://www.catlux.de/proben/gymnasium/klasse-7/deutsch/)
+        save_base_path: Ruta base de guardado (ej: /home/user/Catlux)
+
+    Returns:
+        Ruta construida (/home/user/Catlux/klasse-7/deutsch/) o None si hay error
+    """
+    try:
+        url_parts = base_url.rstrip('/').split('/')
+        subject_folder = url_parts[-1]
+        class_folder = url_parts[-2]
+        return Path(save_base_path) / class_folder / subject_folder
+    except (IndexError, ValueError) as e:
+        logger.error(f"Error parseando URL: {e}")
+        return None
+
 
 # ============================================================================
 # CLASES DE TRACKING Y GESTIÓN
@@ -323,18 +374,7 @@ class PDFManager:
         print(f"  - Ya descargados: {downloaded}")
         print(f"  - Nuevos: {new}\n")
 
-        # Extraer número de REF para ordenar
-        def extract_ref_number(pdf: Dict) -> int:
-            """Extrae el número de REF para ordenar (#3426 -> 3426)"""
-            doc_number = pdf.get('doc_number', '')
-            # Buscar patrones como #3426 o #130g
-            import re
-            match = re.search(r'#(\d+)', doc_number)
-            if match:
-                return int(match.group(1))
-            return 999999  # Si no encuentra número, poner al final
-
-        # Ordenar PDFs por REF (número de referencia)
+        # Ordenar PDFs por REF (número de referencia) de menor a mayor
         sorted_pdfs = sorted(pdfs, key=extract_ref_number)
 
         print("-" * 165)
@@ -379,6 +419,10 @@ def mark_local_files(pdfs: List[Dict], save_path: Path, search_root_path: Option
         search_root_path: Ruta raíz para buscar recursivamente (ej: CATLUX_SAVE_PATH)
     """
     for pdf in pdfs:
+        # Por defecto, marcar como no local
+        pdf['is_local'] = False
+        pdf['local_path'] = None
+
         pdf_file = save_path / (pdf['name'] + '.pdf')
 
         # Primero buscar en la carpeta específica
@@ -460,7 +504,19 @@ def ask_download_selection(pdfs: List[Dict]) -> Optional[List[int]]:
 # ============================================================================
 
 def get_credentials() -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
-    """Obtiene las credenciales desde variables de entorno."""
+    """
+    Obtiene las credenciales desde variables de entorno (.env).
+
+    Busca las siguientes variables:
+    - CATLUX_USERNAME: Email/usuario de CatLux
+    - CATLUX_PASSWORD: Contraseña de CatLux
+    - CATLUX_CERT_PATH: Ruta al certificado SSL (opcional)
+    - CATLUX_SAVE_PATH: Ruta donde guardar PDFs (requerido)
+
+    Returns:
+        Tupla de (username, password, cert_path, save_path)
+        Retorna (None, None, None, None) si faltan credenciales
+    """
     username = os.getenv("CATLUX_USERNAME")
     password = os.getenv("CATLUX_PASSWORD")
     cert_path = os.getenv("CATLUX_CERT_PATH", "")
@@ -479,7 +535,21 @@ def get_credentials() -> Tuple[Optional[str], Optional[str], Optional[str], Opti
 
 def login_to_catlux(session: requests.Session, username: str, password: str,
                     cert_path: Optional[str]) -> bool:
-    """Realiza login en CatLux."""
+    """
+    Realiza login en CatLux con credenciales proporcionadas.
+
+    Extrae dinámicamente el formulario de login, REQUEST_TOKEN y otros parámetros
+    para manejar cambios en la estructura de CatLux.
+
+    Args:
+        session: Sesión de requests para realizar la autenticación
+        username: Nombre de usuario/email de CatLux
+        password: Contraseña de CatLux
+        cert_path: Ruta al certificado SSL (opcional, puede ser None)
+
+    Returns:
+        True si el login fue exitoso, False en caso contrario
+    """
     try:
         # Usar verify=False para evitar problemas de SSL
         # (CatLux usa certificado auto-firmado)
@@ -665,14 +735,9 @@ def preview_pdfs(base_url: str, max_pages: int = 10) -> Tuple[List[Dict], List[i
     if not all([username, password, save_base_path]):
         return [], []
 
-    # Extraer carpeta de destino
-    try:
-        url_parts = base_url.rstrip('/').split('/')
-        subject_folder = url_parts[-1]
-        class_folder = url_parts[-2]
-        full_save_path = Path(save_base_path) / class_folder / subject_folder
-    except (IndexError, ValueError) as e:
-        logger.error(f"Error parseando URL: {e}")
+    # Extraer carpeta de destino (klasse-X/asignatura)
+    full_save_path = extract_category_path(base_url, save_base_path)
+    if not full_save_path:
         return [], []
 
     session = requests.Session()
@@ -692,15 +757,6 @@ def preview_pdfs(base_url: str, max_pages: int = 10) -> Tuple[List[Dict], List[i
 
         # IMPORTANTE: Reordenar la lista igual que en print_preview()
         # para que los índices seleccionados correspondan a lo que el usuario vio
-        def extract_ref_number(pdf: Dict) -> int:
-            """Extrae el número de REF para ordenar (#3426 -> 3426)"""
-            doc_number = pdf.get('doc_number', '')
-            import re
-            match = re.search(r'#(\d+)', doc_number)
-            if match:
-                return int(match.group(1))
-            return 999999
-
         pdfs = sorted(pdfs, key=extract_ref_number)
 
         # Pedir selección
@@ -740,14 +796,9 @@ def download_filtered_pdfs(base_url: str, max_pages: int = 10,
     if not all([username, password, save_base_path]):
         return 0
 
-    # Extraer clase y asignatura de la URL
-    try:
-        url_parts = base_url.rstrip('/').split('/')
-        subject_folder = url_parts[-1]
-        class_folder = url_parts[-2]
-        full_save_path = Path(save_base_path) / class_folder / subject_folder
-    except (IndexError, ValueError) as e:
-        logger.error(f"Error parseando URL: {e}")
+    # Extraer clase y asignatura de la URL (klasse-X/asignatura)
+    full_save_path = extract_category_path(base_url, save_base_path)
+    if not full_save_path:
         return 0
 
     full_save_path.mkdir(parents=True, exist_ok=True)
@@ -767,15 +818,15 @@ def download_filtered_pdfs(base_url: str, max_pages: int = 10,
             logger.error("No se pudo completar el login")
             return 0
 
+        # Crear gestor de PDFs una sola vez
+        manager = PDFManager(session, cert_path)
+
         # Si no se pasaron PDFs, obtenerlos ahora
         if pdfs is None:
-            manager = PDFManager(session, cert_path)
             pdfs = manager.fetch_pdfs(base_url, max_pages)
             # Si no se especificaron índices, descargar todos
             if selected_indices is None:
                 selected_indices = list(range(len(pdfs)))
-
-        manager = PDFManager(session, cert_path)
 
         print("\n🔄 Iniciando descargas...\n")
 
@@ -811,21 +862,25 @@ def download_filtered_pdfs(base_url: str, max_pages: int = 10,
                 downloaded_count += 1
                 logger.info(f"⬇ {pdf_name}.pdf - descargado ({tracker.get_remaining_downloads()} restantes)")
 
-                # Si es examen, buscar y descargar automáticamente su solución
+                # Para cada examen descargado, intentar descargar automáticamente su solución
+                # (Esto previene descargas duplicadas si la solución aparece por separado en la lista)
                 if not pdf['is_solution']:
                     base_id = pdf['name']
+                    # Verificar si ya procesamos este ID de examen
                     if base_id not in processed_ids:
-                        processed_ids.add(base_id)
-                        # Buscar la solución en la lista de PDFs
+                        processed_ids.add(base_id)  # Marcar como procesado para evitar duplicados
+
+                        # Buscar la solución correspondiente en la lista de PDFs
                         solution_name = f"{base_id}_solution"
                         solution = next((p for p in pdfs if p['name'] == solution_name), None)
 
                         if solution:
                             solution_path = full_save_path / (solution_name + ".pdf")
 
-                            # Descargar solución si no existe
+                            # Solo descargar si el archivo de solución no existe localmente
                             if not solution_path.exists():
                                 try:
+                                    # Descargar el PDF de solución
                                     r_sol = session.get(solution['full_url'], verify=False, timeout=30)
                                     r_sol.raise_for_status()
 
@@ -839,6 +894,7 @@ def download_filtered_pdfs(base_url: str, max_pages: int = 10,
                                 except Exception as e:
                                     logger.error(f"Error descargando solución {solution_name}: {e}")
                             else:
+                                # La solución ya existe localmente, no descargar
                                 logger.info(f"✓ {solution_name}.pdf - ya existe")
 
             except Exception as e:
@@ -857,7 +913,15 @@ def download_filtered_pdfs(base_url: str, max_pages: int = 10,
 
 
 def show_latest_downloads(tracker: Optional[DownloadTracker] = None) -> None:
-    """Muestra las últimas descargas registradas."""
+    """
+    Muestra las últimas descargas registradas (máximo 20).
+
+    Muestra un historial cronológico invertido (más recientes primero) de los PDFs
+    descargados, incluyendo la fecha de descarga.
+
+    Args:
+        tracker: Rastreador de descargas. Si es None, se crea uno nuevo usando TRACKER_FILE
+    """
     if tracker is None:
         tracker = DownloadTracker(TRACKER_FILE)
 
@@ -885,8 +949,19 @@ def show_latest_downloads(tracker: Optional[DownloadTracker] = None) -> None:
 # MAIN
 # ============================================================================
 
-def main():
-    """Función principal."""
+def main() -> int:
+    """
+    Función principal que gestiona el flujo de la aplicación.
+
+    Maneja argumentos CLI y controla el bucle interactivo de descarga:
+    1. Procesa argumentos (--url, --info, --latest, --select-category, etc.)
+    2. Ejecuta preview de PDFs de forma interactiva
+    3. Permite al usuario seleccionar qué descargar
+    4. Si --select-category, permite seleccionar múltiples categorías en una sesión
+
+    Returns:
+        Código de salida (0=éxito, 1=error)
+    """
     parser = argparse.ArgumentParser(
         description="Descargador de PDFs de CatLux con preview de categorías"
     )

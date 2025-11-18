@@ -58,3 +58,8 @@ Thumbs.db
 *.crt
 *.pem
 *.key
+
+# Debug y archivos temporales
+debug_*.py
+new*.html
+*.tmp
