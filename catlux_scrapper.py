@@ -384,6 +384,7 @@ def mark_local_files(pdfs: List[Dict], save_path: Path, search_root_path: Option
         # Primero buscar en la carpeta específica
         if pdf_file.exists():
             pdf['is_local'] = True
+            pdf['local_path'] = pdf_file  # Guardar ruta completa
             continue
 
         # Si no encontró y search_root_path existe, buscar recursivamente en TODAS las subcarpetas
@@ -391,6 +392,7 @@ def mark_local_files(pdfs: List[Dict], save_path: Path, search_root_path: Option
             # Buscar recursivamente bajo la raíz (CATLUX_SAVE_PATH)
             for found_file in search_root_path.rglob(f"{pdf['name']}.pdf"):
                 pdf['is_local'] = True
+                pdf['local_path'] = found_file  # Guardar ruta completa
                 logger.info(f"Detectado en otra carpeta: {found_file.relative_to(search_root_path)}")
                 break
 
@@ -791,9 +793,10 @@ def download_filtered_pdfs(base_url: str, max_pages: int = 10,
             pdf_name = pdf['name']
             pdf_save_path = full_save_path / (pdf_name + ".pdf")
 
-            # Si ya existe localmente, saltarlo (para cualquier tipo de PDF)
-            if pdf_save_path.exists():
-                logger.info(f"✓ {pdf_name}.pdf - ya existe")
+            # Si ya existe localmente (marcado en mark_local_files()), saltarlo
+            if pdf.get('is_local', False):
+                local_path = pdf.get('local_path', pdf_save_path)
+                logger.info(f"✓ {pdf_name}.pdf - ya existe en {local_path.relative_to(Path(save_base_path))}")
                 continue
 
             # Descargar
