@@ -363,20 +363,20 @@ class PDFManager:
 # FUNCIONES DE UTILIDAD
 # ============================================================================
 
-def mark_local_files(pdfs: List[Dict], save_path: Path, search_all_subfolders: bool = True) -> None:
+def mark_local_files(pdfs: List[Dict], save_path: Path, search_root_path: Optional[Path] = None) -> None:
     """
     Marca cuáles PDFs ya existen localmente.
 
     Busca en:
     - La carpeta específica (save_path)
-    - Si search_all_subfolders=True, busca recursivamente en todas las subcarpetas
+    - Si search_root_path se proporciona, busca recursivamente en TODAS las subcarpetas
 
     Esto permite detectar PDFs descargados en otro lugar o manualmente.
 
     Args:
         pdfs: Lista de PDFs a marcar
         save_path: Ruta donde buscar los archivos (punto de partida)
-        search_all_subfolders: Si True, busca recursivamente en todas las subcarpetas
+        search_root_path: Ruta raíz para buscar recursivamente (ej: CATLUX_SAVE_PATH)
     """
     for pdf in pdfs:
         pdf_file = save_path / (pdf['name'] + '.pdf')
@@ -386,20 +386,16 @@ def mark_local_files(pdfs: List[Dict], save_path: Path, search_all_subfolders: b
             pdf['is_local'] = True
             continue
 
-        # Si no encontró y search_all_subfolders=True, buscar en todas las subcarpetas
-        if search_all_subfolders and save_path.parent.exists():
-            # Buscar en TODAS las subcarpetas bajo CATLUX_SAVE_PATH
-            # Ej: C:\Users\xavie\Documents\catlux\
-            root_path = save_path.parent.parent  # Sube 2 niveles: klasse-7/deutsch/ -> catlux/
-
-            # Buscar recursivamente
-            for found_file in root_path.rglob(f"{pdf['name']}.pdf"):
+        # Si no encontró y search_root_path existe, buscar recursivamente en TODAS las subcarpetas
+        if search_root_path and search_root_path.exists():
+            # Buscar recursivamente bajo la raíz (CATLUX_SAVE_PATH)
+            for found_file in search_root_path.rglob(f"{pdf['name']}.pdf"):
                 pdf['is_local'] = True
-                logger.info(f"Detectado en otra carpeta: {found_file.relative_to(root_path)}")
+                logger.info(f"Detectado en otra carpeta: {found_file.relative_to(search_root_path)}")
                 break
 
 
-def ask_download_selection(pdfs: List[Dict]) -> List[int]:
+def ask_download_selection(pdfs: List[Dict]) -> Optional[List[int]]:
     """
     Pregunta al usuario qué PDFs descargar de forma interactiva.
 
@@ -407,51 +403,50 @@ def ask_download_selection(pdfs: List[Dict]) -> List[int]:
         pdfs: Lista de PDFs disponibles
 
     Returns:
-        Lista de índices (0-basado) de PDFs a descargar
+        Lista de índices (0-basado) de PDFs a descargar, o None si volver atrás
     """
     print("\n" + "=" * 80)
     print("📥 SELECCIONAR PDFS PARA DESCARGAR")
     print("=" * 80)
     print("\nOpciones:")
-    print("  - Escribe 'all' para descargar TODOS los PDFs nuevos")
-    print("  - Escribe 'none' para NO descargar nada")
-    print("  - Escribe números separados por comas: 1,3,5 para descargar esos")
-    print("  - Escribe 'new' para descargar solo los NUEVOS (no los ya descargados)")
+    print("  0. Descargar TODOS los nuevos")
+    print("  1. NO descargar nada")
+    print("  2. Descargar solo los NUEVOS (no los ya descargados)")
+    print("  3. Seleccionar números específicos (ej: 1,3,5)")
+    print("  9. Volver atrás (seleccionar otras categorías)")
     print("\n" + "=" * 80)
 
     while True:
         try:
             user_input = input("\nSelección: ").strip().lower()
 
-            if user_input == 'all':
+            if user_input == '0':
                 return list(range(len(pdfs)))
 
-            elif user_input == 'none':
+            elif user_input == '1':
                 return []
 
-            elif user_input == 'new':
-                # Agrupar por ID para obtener índices únicos de nuevos
-                new_indices = set()
-                for i, pdf in enumerate(pdfs):
-                    if not pdf.get('is_local', False):
-                        # Obtener el índice del PDF sin solución (el grupo)
-                        pdf_id = pdf['name'].replace('_solution', '')
-                        # Buscar el índice del examen (el primero)
-                        for j, p in enumerate(pdfs):
-                            if p['name'] == pdf_id:
-                                new_indices.add(j)
-                                break
-                return sorted(list(new_indices))
+            elif user_input == '2':
+                # Solo nuevos
+                new_indices = [i for i, pdf in enumerate(pdfs) if not pdf.get('is_local', False)]
+                return new_indices
 
-            else:
-                # Parsear números
-                indices = [int(x.strip()) - 1 for x in user_input.split(',')]
-                # Validar
+            elif user_input == '3':
+                # Seleccionar números específicos
+                numbers_input = input("Escribe números (ej: 1,3,5): ").strip()
+                indices = [int(x.strip()) - 1 for x in numbers_input.split(',')]
                 if all(0 <= i < len(pdfs) for i in indices):
-                    return sorted(list(set(indices)))  # Eliminar duplicados y ordenar
+                    return sorted(list(set(indices)))
                 else:
                     print(f"❌ Números inválidos. Rango válido: 1-{len(pdfs)}")
                     continue
+
+            elif user_input == '9':
+                return None  # Señal para volver atrás
+
+            else:
+                print("❌ Opción inválida. Usa 0, 1, 2, 3, o 9")
+                continue
 
         except (ValueError, IndexError):
             print("❌ Entrada inválida. Intenta de nuevo.")
@@ -687,8 +682,8 @@ def preview_pdfs(base_url: str, max_pages: int = 10) -> Tuple[List[Dict], List[i
         manager = PDFManager(session, cert_path)
         pdfs = manager.fetch_pdfs(base_url, max_pages)
 
-        # Marcar archivos locales
-        mark_local_files(pdfs, full_save_path)
+        # Marcar archivos locales (buscar recursivamente en CATLUX_SAVE_PATH)
+        mark_local_files(pdfs, full_save_path, Path(save_base_path))
 
         # Mostrar preview
         manager.print_preview(pdfs, base_url, full_save_path)
@@ -971,22 +966,50 @@ def main():
         print("      python catlux_scrapper.py --info")
         return 1
 
-    # Preview (siempre interactivo - pregunta qué descargar)
-    logger.info(f"Iniciando preview desde: {url}")
-    pdfs, selected_indices = preview_pdfs(url, args.pages)
+    # Bucle principal: permite volver a seleccionar categorías
+    while True:
+        # Preview (siempre interactivo - pregunta qué descargar)
+        logger.info(f"Iniciando preview desde: {url}")
+        pdfs, selected_indices = preview_pdfs(url, args.pages)
 
-    if not pdfs:
-        logger.error("No se encontraron PDFs")
-        return 1
+        if not pdfs:
+            logger.error("No se encontraron PDFs")
+            # Si no hay PDFs pero era selección interactiva, permitir volver atrás
+            if args.select_category:
+                print("\n⚠️  No se encontraron PDFs en esta categoría")
+                url = select_category_interactive()
+                continue
+            else:
+                return 1
 
-    # Si se seleccionaron PDFs para descargar, ejecutar descarga
-    if selected_indices:
-        logger.info(f"Descargando {len(selected_indices)} PDFs seleccionados...")
-        download_filtered_pdfs(url, args.pages, tracker, pdfs, selected_indices)
-    else:
-        print("\n✓ No se descargará nada (seleccionaste 'none')")
+        # Si selected_indices es None, el usuario quiere volver a seleccionar categorías
+        if selected_indices is None:
+            if args.select_category:
+                print("\n📚 Volviendo a seleccionar categoría...")
+                url = select_category_interactive()
+                continue
+            else:
+                print("\n✓ Cancelado")
+                return 0
 
-    return 0
+        # Si se seleccionaron PDFs para descargar, ejecutar descarga
+        if selected_indices:
+            logger.info(f"Descargando {len(selected_indices)} PDFs seleccionados...")
+            download_filtered_pdfs(url, args.pages, tracker, pdfs, selected_indices)
+        else:
+            print("\n✓ No se descargará nada (seleccionaste 'none')")
+
+        # Preguntar si volver a seleccionar categorías o salir
+        if args.select_category:
+            print("\n¿Qué deseas hacer?")
+            print("  1. Seleccionar otras categorías")
+            print("  2. Salir")
+            choice = input("Opción: ").strip()
+            if choice == '1':
+                url = select_category_interactive()
+                continue
+
+        return 0
 
 
 if __name__ == '__main__':
