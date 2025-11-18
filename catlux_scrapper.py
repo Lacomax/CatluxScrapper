@@ -629,14 +629,14 @@ def select_category_interactive() -> Optional[str]:
 
     # Klassen disponibles
     klassen = {
-        '1': 'klasse-5',
-        '2': 'klasse-6',
-        '3': 'klasse-7',
-        '4': 'klasse-8',
-        '5': 'klasse-9',
-        '6': 'klasse-10',
-        '7': 'klasse-11',
-        '8': 'klasse-12',
+        '5': 'klasse-5',
+        '6': 'klasse-6',
+        '7': 'klasse-7',
+        '8': 'klasse-8',
+        '9': 'klasse-9',
+        '10': 'klasse-10',
+        '11': 'klasse-11',
+        '12': 'klasse-12',
     }
 
     # Asignaturas disponibles
